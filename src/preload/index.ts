@@ -1014,6 +1014,10 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("openGameInstaller", shop, objectId),
   getGameInstallerActionType: (shop: GameShop, objectId: string) =>
     ipcRenderer.invoke("getGameInstallerActionType", shop, objectId),
+  rescanGameExecutable: (shop: GameShop, objectId: string) =>
+    ipcRenderer.invoke("rescanGameExecutable", shop, objectId) as Promise<
+      string | null
+    >,
   openGameInstallerPath: (shop: GameShop, objectId: string) =>
     ipcRenderer.invoke("openGameInstallerPath", shop, objectId),
   openGameWinetricks: (shop: GameShop, objectId: string) =>

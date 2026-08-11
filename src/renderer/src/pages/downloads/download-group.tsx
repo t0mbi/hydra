@@ -6,7 +6,12 @@ import {
   buildGameDetailsPath,
 } from "@renderer/helpers";
 
-import { Downloader, formatBytes, formatBytesToMbps } from "@shared";
+import {
+  Downloader,
+  formatBytes,
+  formatBytesToMbps,
+  getGameExecutableFilters,
+} from "@shared";
 import { addMilliseconds } from "date-fns";
 import {
   DOWNLOADER_NAME,
@@ -17,6 +22,7 @@ import {
   useDownload,
   useLibrary,
   useDate,
+  useToast,
 } from "@renderer/hooks";
 
 import "./download-group.scss";
@@ -43,7 +49,7 @@ import {
   XCircleIcon,
   GraphIcon,
 } from "@primer/octicons-react";
-import { MoreVertical, Folder } from "lucide-react";
+import { MoreVertical, Folder, Search } from "lucide-react";
 import { average } from "color.js";
 
 function hexToRgb(hex: string): [number, number, number] {
@@ -644,6 +650,10 @@ export function DownloadGroup({
   const [gameActionTypes, setGameActionTypes] = useState<
     Record<string, "install" | "open-folder">
   >({});
+  const [rescanningGameIds, setRescanningGameIds] = useState<Set<string>>(
+    new Set()
+  );
+  const { showSuccessToast, showErrorToast } = useToast();
 
   const extractDominantColor = useCallback(
     async (imageUrl: string, gameId: string) => {
@@ -817,6 +827,82 @@ export function DownloadGroup({
     },
     [updateLibrary]
   );
+
+  const handleAlreadyInstalled = async (game: LibraryGame) => {
+    setRescanningGameIds((prev) => new Set(prev).add(game.id));
+
+    try {
+      const foundPath = await window.electron.rescanGameExecutable(
+        game.shop,
+        game.objectId
+      );
+
+      if (foundPath) {
+        setGameActionTypes((prev) => ({ ...prev, [game.id]: "open-folder" }));
+        showSuccessToast(
+          t("already_installed"),
+          t("executable_found_toast", {
+            executable: foundPath.split(/[/\\]/).pop(),
+          })
+        );
+        return;
+      }
+
+      showSuccessToast(
+        t("already_installed"),
+        t("executable_not_found_select_manually")
+      );
+
+      const downloadsPath =
+        userPreferences?.downloadsPath ||
+        (await window.electron.getDefaultDownloadsPath());
+
+      const filters = getGameExecutableFilters(window.electron.platform, {
+        executable: tGameDetails("game_executable"),
+        allFiles: tGameDetails("all_files"),
+      });
+
+      const { filePaths } = await window.electron.showOpenDialog({
+        properties: ["openFile"],
+        defaultPath: downloadsPath,
+        filters,
+      });
+
+      const selectedPath = filePaths?.[0];
+      if (!selectedPath) return;
+
+      const gameUsingPath =
+        await window.electron.verifyExecutablePathInUse(selectedPath);
+      if (gameUsingPath) {
+        showErrorToast(
+          tGameDetails("executable_path_in_use", {
+            game: gameUsingPath.title,
+          })
+        );
+        return;
+      }
+
+      await window.electron.updateExecutablePath(
+        game.shop,
+        game.objectId,
+        selectedPath
+      );
+      setGameActionTypes((prev) => ({ ...prev, [game.id]: "open-folder" }));
+      showSuccessToast(
+        t("already_installed"),
+        t("executable_found_toast", {
+          executable: selectedPath.split(/[/\\]/).pop(),
+        })
+      );
+      openDeleteGameModal(game.shop, game.objectId);
+    } finally {
+      setRescanningGameIds((prev) => {
+        const next = new Set(prev);
+        next.delete(game.id);
+        return next;
+      });
+    }
+  };
 
   const getGameActions = (game: LibraryGame): DropdownMenuItem[] => {
     const download = lastPacket?.download;
@@ -1149,28 +1235,44 @@ export function DownloadGroup({
                       const actionType =
                         gameActionTypes[game.id] || "open-folder";
                       const isInstall = actionType === "install";
+                      const isRescanning = rescanningGameIds.has(game.id);
 
                       return (
-                        <Button
-                          theme="primary"
-                          onClick={() =>
-                            openGameInstaller(game.shop, game.objectId)
-                          }
-                          disabled={isGameDeleting(game.id)}
-                          className="download-group__simple-action-btn"
-                        >
-                          {isInstall ? (
-                            <>
-                              <DownloadIcon size={16} />
-                              {t("install")}
-                            </>
-                          ) : (
-                            <>
-                              <Folder size={16} />
-                              {tGameDetails("open_folder")}
-                            </>
+                        <>
+                          <Button
+                            theme="primary"
+                            onClick={() =>
+                              openGameInstaller(game.shop, game.objectId)
+                            }
+                            disabled={isGameDeleting(game.id)}
+                            className="download-group__simple-action-btn"
+                          >
+                            {isInstall ? (
+                              <>
+                                <DownloadIcon size={16} />
+                                {t("install")}
+                              </>
+                            ) : (
+                              <>
+                                <Folder size={16} />
+                                {tGameDetails("open_folder")}
+                              </>
+                            )}
+                          </Button>
+                          {isInstall && (
+                            <Button
+                              theme="outline"
+                              onClick={() => handleAlreadyInstalled(game)}
+                              disabled={isGameDeleting(game.id) || isRescanning}
+                              className="download-group__simple-action-btn"
+                            >
+                              <Search size={16} />
+                              {isRescanning
+                                ? t("checking_for_executable")
+                                : t("already_installed")}
+                            </Button>
                           )}
-                        </Button>
+                        </>
                       );
                     })()}
                   {isQueuedGroup && game.download?.progress !== 1 && (
