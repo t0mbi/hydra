@@ -1,0 +1,6 @@
+requests>=2.31
+vdf>=3.4
+tkinterdnd2>=0.3.0
+
+# Optional, Windows-only: enables .lnk shortcut support. Not needed on Linux.
+# pylnk3>=0.4.4

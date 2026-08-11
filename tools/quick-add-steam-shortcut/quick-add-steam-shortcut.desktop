@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Quick Add to Steam
+Comment=Opens a drop window - drag a game shortcut onto it to add it to Steam with artwork
+Icon=steam
+Terminal=false
+Categories=Game;
+
+# Edit this to your actual paths, then drop this file on your desktop and
+# mark it executable/trusted.
+Exec=python3 /home/YOUR_USER/hydra/tools/quick-add-steam-shortcut/quick_add_steam_shortcut.py

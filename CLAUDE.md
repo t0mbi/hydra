@@ -46,6 +46,24 @@ directly on `main`.
   Paired with a Downloads-page fix (`get-game-installer-action-type.ts`) so
   the "Install" button doesn't show forever once a game's `executablePath`
   is set.
+- **Quick Add to Steam** (`tools/quick-add-steam-shortcut/`) — a standalone
+  Python + Tkinter utility, deliberately **not** part of the Hydra app: no
+  import of Hydra's code, no dependency on Hydra being installed or running,
+  own tiny local config (`~/.config/quick-add-steam-shortcut/config.json`)
+  instead of Hydra's LevelDB store. It lives in this repo purely for
+  convenience. Drop a game shortcut (`.desktop`, `.lnk`, or a raw
+  executable) on its always-on-top window and it matches the name against
+  Steam via Hydra's public, unauthenticated `/catalogue/search/suggestions`
+  endpoint (a plain HTTP call — not "requiring Hydra" in any install/runtime
+  sense), pulls the best-scored icon/hero/logo/grid art from SteamGridDB
+  using a key entered directly into the tool, and writes the shortcut into
+  Steam's `shortcuts.vdf`. Its VDF read/write was round-tripped and
+  cross-checked byte-for-byte against Hydra's own `steam-shortcut-editor`
+  writer, so it can safely share a `shortcuts.vdf` with Hydra's own "Add to
+  Steam" feature. See `tools/quick-add-steam-shortcut/README.md`.
+  **The GUI/drag-and-drop itself is untested** — built and validated
+  headlessly on Windows (parsing + VDF logic only); needs a real run on
+  CachyOS to confirm the Tkinter window and drop behavior actually work.
 - **Steam shortcut artwork fallback for custom games** (`create-steam-shortcut.ts`,
   `resolveShortcutAssetUrls`): custom-shop games got no hero/logo/icon on
   their Steam shortcut, only a cover — `getGameAssets()` always returns
