@@ -76,7 +76,11 @@ const resolveShortcutAssetUrls = (game: Game, assets: ShopAssets | null) => ({
     assets?.libraryHeroImageUrl ??
     game.libraryHeroImageUrl ??
     null,
-  logo: game.customLogoImageUrl ?? assets?.logoImageUrl ?? game.logoImageUrl ?? null,
+  logo:
+    game.customLogoImageUrl ??
+    assets?.logoImageUrl ??
+    game.logoImageUrl ??
+    null,
   cover: game.customCoverImageUrl ?? assets?.coverImageUrl ?? null,
   library: assets?.libraryImageUrl ?? game.iconUrl ?? null,
 });
