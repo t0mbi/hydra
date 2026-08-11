@@ -1468,8 +1468,7 @@ export default function Game() {
                   focusNavigationOverrides={sidebarCarouselNavigationOverrides}
                 />
 
-                {(achievements?.length ?? game?.achievementCount ?? 0) >
-                  0 && (
+                {(achievements?.length ?? game?.achievementCount ?? 0) > 0 && (
                   <AchievementsBox
                     achievements={achievements ?? []}
                     focusId={GAME_SIDEBAR_ACHIEVEMENTS_ID}
