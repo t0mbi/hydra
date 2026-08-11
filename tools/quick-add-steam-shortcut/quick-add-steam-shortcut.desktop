@@ -1,3 +1,4 @@
+#!/usr/bin/env xdg-open
 [Desktop Entry]
 Type=Application
 Name=Quick Add to Steam
@@ -6,6 +7,8 @@ Icon=steam
 Terminal=false
 Categories=Game;
 
-# Edit this to your actual paths, then drop this file on your desktop and
-# mark it executable/trusted.
-Exec=python3 /home/YOUR_USER/hydra/tools/quick-add-steam-shortcut/quick_add_steam_shortcut.py
+# Only needed for a manual install — install.sh generates this file
+# automatically with the correct paths already filled in.
+# If installing by hand: edit this to your actual paths, then drop this
+# file on your desktop and mark it executable/trusted.
+Exec=python3 /home/YOUR_USER/Applications/steam_add/quick_add_steam_shortcut.py
