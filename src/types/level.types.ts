@@ -78,6 +78,7 @@ export interface Game {
   selectedDiscPath?: string | null;
   dontAskDiscSelection?: boolean;
   romSizeBytes?: number | null;
+  matchedSteamObjectId?: string | null;
 }
 
 export interface Download {
@@ -145,6 +146,7 @@ export interface UserPreferences {
   torBoxApiToken?: string | null;
   retroAchievementsWebApiKey?: string | null;
   retroAchievementsUsername?: string | null;
+  steamGridDbApiKey?: string | null;
   preferQuitInsteadOfHiding?: boolean;
   runAtStartup?: boolean;
   startMinimized?: boolean;

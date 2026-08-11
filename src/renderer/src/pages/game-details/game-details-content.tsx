@@ -81,6 +81,8 @@ export function GameDetailsContent() {
     game,
     hasNSFWContentBlocked,
     shop,
+    steamMatchShop,
+    steamMatchObjectId,
     setShowGameOptionsModal,
     setGameOptionsInitialCategory,
   } = useContext(gameDetailsContext);
@@ -376,6 +378,13 @@ export function GameDetailsContent() {
                 <div className="game-details__hero-standard-meta">
                   <GameLogo game={game} shopDetails={shopDetails} />
                   {classicsChips}
+                  {isCustomGame && (
+                    <div className="game-details__hero-classics-chips">
+                      <span className="game-details__hero-classics-chip">
+                        {t("custom_game_badge")}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -449,11 +458,11 @@ export function GameDetailsContent() {
               </button>
             )}
 
-            {shop !== "custom" && shop && objectId && (
+            {steamMatchShop !== "custom" && steamMatchObjectId && (
               <div ref={reviewsRef}>
                 <GameReviews
-                  shop={shop}
-                  objectId={objectId}
+                  shop={steamMatchShop}
+                  objectId={steamMatchObjectId}
                   game={game}
                   userDetailsId={userDetails?.id}
                   isGameInLibrary={isGameInLibrary}
@@ -464,7 +473,7 @@ export function GameDetailsContent() {
             )}
           </div>
 
-          {shop !== "custom" && <Sidebar />}
+          {steamMatchShop !== "custom" && <Sidebar />}
         </div>
       </section>
     </div>

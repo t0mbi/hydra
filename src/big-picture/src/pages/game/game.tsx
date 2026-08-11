@@ -435,6 +435,8 @@ export default function Game() {
     shopDetails,
     game,
     stats,
+    effectiveShop,
+    effectiveObjectId,
     isGameRunning,
     runningSessionDurationInMillis,
     isLoading,
@@ -1322,8 +1324,8 @@ export default function Game() {
               <Divider />
 
               <GameReviews
-                shop={shop!}
-                objectId={objectId!}
+                shop={effectiveShop}
+                objectId={effectiveObjectId}
                 topNavigationTarget={commentsTopNavigationTarget}
                 onHasNavigableActionsChange={setHasNavigableComments}
               />
@@ -1412,16 +1414,17 @@ export default function Game() {
                   focusNavigationOverrides={sidebarCarouselNavigationOverrides}
                 />
 
-                {!isLaunchboxGame && (game?.achievementCount ?? 0) > 0 && (
-                  <AchievementsBox
-                    achievements={achievements ?? []}
-                    focusId={GAME_SIDEBAR_ACHIEVEMENTS_ID}
-                    focusNavigationOrder={4}
-                    focusNavigationOverrides={
-                      sidebarCarouselNavigationOverrides
-                    }
-                  />
-                )}
+                {!isLaunchboxGame &&
+                  (achievements?.length ?? game?.achievementCount ?? 0) > 0 && (
+                    <AchievementsBox
+                      achievements={achievements ?? []}
+                      focusId={GAME_SIDEBAR_ACHIEVEMENTS_ID}
+                      focusNavigationOrder={4}
+                      focusNavigationOverrides={
+                        sidebarCarouselNavigationOverrides
+                      }
+                    />
+                  )}
 
                 <FocusItem
                   id={GAME_SIDEBAR_METADATA_ID}

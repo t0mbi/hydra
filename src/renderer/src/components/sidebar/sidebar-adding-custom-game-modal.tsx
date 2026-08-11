@@ -1,26 +1,35 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { FileDirectoryIcon } from "@primer/octicons-react";
+import { FileDirectoryIcon, XIcon } from "@primer/octicons-react";
 
 import { Modal, TextField, Button } from "@renderer/components";
-import { useLibrary, useToast } from "@renderer/hooks";
+import {
+  useLibrary,
+  useSteamMatchSearch,
+  useToast,
+  type SteamMatchSuggestion,
+} from "@renderer/hooks";
 import {
   buildGameDetailsPath,
   generateRandomGradient,
 } from "@renderer/helpers";
 import { LINUX_GAME_EXECUTABLE_EXTENSIONS } from "@shared";
+import { logger } from "@renderer/logger";
+import type { ShopAssets } from "@types";
 
 import "./sidebar-adding-custom-game-modal.scss";
 
 export interface SidebarAddingCustomGameModalProps {
   visible: boolean;
   onClose: () => void;
+  initialExecutablePath?: string;
 }
 
 export function SidebarAddingCustomGameModal({
   visible,
   onClose,
+  initialExecutablePath,
 }: Readonly<SidebarAddingCustomGameModalProps>) {
   const { t } = useTranslation("sidebar");
   const { updateLibrary } = useLibrary();
@@ -30,6 +39,29 @@ export function SidebarAddingCustomGameModal({
   const [gameName, setGameName] = useState("");
   const [executablePath, setExecutablePath] = useState("");
   const [isAdding, setIsAdding] = useState(false);
+  const [matchedGame, setMatchedGame] = useState<SteamMatchSuggestion | null>(
+    null
+  );
+  const [matchedAssets, setMatchedAssets] = useState<ShopAssets | null>(null);
+  // Tracks which match is currently "active" so an asset fetch for a match
+  // the user has since changed away from can't clobber newer state.
+  const matchedGameRef = useRef<SteamMatchSuggestion | null>(null);
+
+  const {
+    suggestions: steamSuggestions,
+    isSearching: isSearchingSteam,
+    clearSuggestions,
+  } = useSteamMatchSearch(gameName, !matchedGame);
+
+  useEffect(() => {
+    if (visible && initialExecutablePath) {
+      setExecutablePath(initialExecutablePath);
+
+      const fileName = initialExecutablePath.split(/[\\/]/).pop() || "";
+      const gameNameFromFile = fileName.replace(/\.[^/.]+$/, "");
+      setGameName(gameNameFromFile);
+    }
+  }, [visible, initialExecutablePath]);
 
   const handleSelectExecutable = async () => {
     const filters =
@@ -76,6 +108,37 @@ export function SidebarAddingCustomGameModal({
 
   const handleGameNameChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setGameName(event.target.value);
+
+    if (matchedGame) {
+      matchedGameRef.current = null;
+      setMatchedGame(null);
+      setMatchedAssets(null);
+    }
+  };
+
+  const handleSelectMatch = (suggestion: SteamMatchSuggestion) => {
+    matchedGameRef.current = suggestion;
+    setMatchedGame(suggestion);
+    setGameName(suggestion.title);
+    clearSuggestions();
+    setMatchedAssets(null);
+
+    window.electron
+      .getGameAssets(suggestion.objectId, "steam")
+      .then((assets) => {
+        if (matchedGameRef.current?.objectId !== suggestion.objectId) return;
+        setMatchedAssets(assets);
+      })
+      .catch((error) => {
+        if (matchedGameRef.current?.objectId !== suggestion.objectId) return;
+        logger.error("Failed to fetch matched Steam game assets", error);
+      });
+  };
+
+  const handleClearMatch = () => {
+    matchedGameRef.current = null;
+    setMatchedGame(null);
+    setMatchedAssets(null);
   };
 
   const handleAddGame = async () => {
@@ -87,18 +150,23 @@ export function SidebarAddingCustomGameModal({
     setIsAdding(true);
 
     try {
-      // Generate gradient URL only for hero image
       const gameNameForSeed = gameName.trim();
-      const iconUrl = ""; // Don't use gradient for icon
-      const logoImageUrl = ""; // Don't use gradient for logo
-      const libraryHeroImageUrl = generateRandomGradient(); // Only use gradient for hero
+      // Use the matched Steam game's real artwork when available; otherwise
+      // fall back to no icon/logo and a generated gradient hero.
+      const iconUrl = matchedAssets?.iconUrl || "";
+      const logoImageUrl = matchedAssets?.logoImageUrl || "";
+      const libraryHeroImageUrl =
+        matchedAssets?.libraryHeroImageUrl || generateRandomGradient();
+      const customCoverImageUrl = matchedAssets?.coverImageUrl || null;
 
       const newGame = await window.electron.addCustomGameToLibrary(
         gameNameForSeed,
         executablePath,
         iconUrl,
         logoImageUrl,
-        libraryHeroImageUrl
+        libraryHeroImageUrl,
+        matchedGame?.objectId ?? null,
+        customCoverImageUrl
       );
 
       showSuccessToast(t("custom_game_modal_success"));
@@ -114,6 +182,9 @@ export function SidebarAddingCustomGameModal({
 
       setGameName("");
       setExecutablePath("");
+      matchedGameRef.current = null;
+      setMatchedGame(null);
+      setMatchedAssets(null);
       onClose();
     } catch (error) {
       console.error("Failed to add custom game:", error);
@@ -129,6 +200,9 @@ export function SidebarAddingCustomGameModal({
     if (!isAdding) {
       setGameName("");
       setExecutablePath("");
+      matchedGameRef.current = null;
+      setMatchedGame(null);
+      setMatchedAssets(null);
       onClose();
     }
   };
@@ -171,6 +245,59 @@ export function SidebarAddingCustomGameModal({
             theme="dark"
             disabled={isAdding}
           />
+
+          {matchedGame ? (
+            <div className="sidebar-adding-custom-game-modal__match">
+              {matchedGame.iconUrl && (
+                <img
+                  src={matchedGame.iconUrl}
+                  alt=""
+                  className="sidebar-adding-custom-game-modal__match-icon"
+                />
+              )}
+              <span className="sidebar-adding-custom-game-modal__match-label">
+                {t("custom_game_modal_match_selected", {
+                  title: matchedGame.title,
+                })}
+              </span>
+              <button
+                type="button"
+                className="sidebar-adding-custom-game-modal__match-clear"
+                onClick={handleClearMatch}
+                disabled={isAdding}
+                aria-label={t("custom_game_modal_match_clear")}
+              >
+                <XIcon size={14} />
+              </button>
+            </div>
+          ) : (
+            (isSearchingSteam || steamSuggestions.length > 0) && (
+              <div className="sidebar-adding-custom-game-modal__suggestions">
+                <span className="sidebar-adding-custom-game-modal__suggestions-title">
+                  {isSearchingSteam
+                    ? t("custom_game_modal_match_searching")
+                    : t("custom_game_modal_match_steam_title")}
+                </span>
+                <ul className="sidebar-adding-custom-game-modal__suggestions-list">
+                  {steamSuggestions.map((suggestion) => (
+                    <li key={suggestion.objectId}>
+                      <button
+                        type="button"
+                        className="sidebar-adding-custom-game-modal__suggestion"
+                        onClick={() => handleSelectMatch(suggestion)}
+                        disabled={isAdding}
+                      >
+                        {suggestion.iconUrl && (
+                          <img src={suggestion.iconUrl} alt="" />
+                        )}
+                        {suggestion.title}
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )
+          )}
         </div>
 
         <div className="sidebar-adding-custom-game-modal__actions">

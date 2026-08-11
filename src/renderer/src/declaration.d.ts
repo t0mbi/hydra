@@ -306,7 +306,9 @@ declare global {
       executablePath: string,
       iconUrl?: string,
       logoImageUrl?: string,
-      libraryHeroImageUrl?: string
+      libraryHeroImageUrl?: string,
+      matchedSteamObjectId?: string | null,
+      customCoverImageUrl?: string | null
     ) => Promise<Game>;
     updateCustomGame: (params: {
       shop: GameShop;
@@ -320,6 +322,7 @@ declare global {
       originalLogoPath?: string;
       originalHeroPath?: string;
       customOriginalCoverPath?: string;
+      matchedSteamObjectId?: string | null;
     }) => Promise<Game>;
     copyCustomGameAsset: (
       sourcePath: string,
@@ -546,6 +549,7 @@ declare global {
     resetGamePlayTime: (shop: GameShop, objectId: string) => Promise<void>;
     /* User preferences */
     authenticateRealDebrid: (apiToken: string) => Promise<RealDebridUser>;
+    validateSteamGridDbApiKey: (apiKey: string) => Promise<void>;
     authenticatePremiumize: (apiToken: string) => Promise<PremiumizeUser>;
     authenticateAllDebrid: (apiToken: string) => Promise<AllDebridUser>;
     authenticateTorBox: (apiToken: string) => Promise<TorBoxUser>;
@@ -959,6 +963,7 @@ declare global {
     showOpenDialog: (
       options: Electron.OpenDialogOptions
     ) => Promise<Electron.OpenDialogReturnValue>;
+    getPathForFile: (file: File) => string;
     readDirectory: (path: string) => Promise<FileExplorerEntry[]>;
     getPathInfo: (path: string) => Promise<FileExplorerPathInfo>;
     listDrives: () => Promise<string[]>;

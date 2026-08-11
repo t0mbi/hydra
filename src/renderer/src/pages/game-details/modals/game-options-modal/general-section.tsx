@@ -9,6 +9,7 @@ import {
 } from "react";
 import { Button, CheckboxField, TextField } from "@renderer/components";
 import SteamLogo from "@renderer/assets/steam-logo.svg?react";
+import type { SteamMatchSuggestion } from "@renderer/hooks";
 import type { ClassicsDisc, LibraryGame, ShortcutLocation } from "@types";
 import { DotIcon, FileIcon } from "@primer/octicons-react";
 import { HardDrive, X, FolderOpen, ChevronDown } from "lucide-react";
@@ -267,6 +268,11 @@ interface GeneralSettingsSectionProps {
   onChangeGameTitle: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onBlurGameTitle: () => Promise<void>;
   onResetGameTitle?: () => void;
+  steamMatchSuggestions?: SteamMatchSuggestion[];
+  isSearchingSteamMatch?: boolean;
+  pendingSteamMatch?: SteamMatchSuggestion | null;
+  onSelectSteamMatch?: (suggestion: SteamMatchSuggestion) => void;
+  onClearSteamMatch?: () => void;
   onChangeLaunchOptions: (event: React.ChangeEvent<HTMLInputElement>) => void;
   onClearLaunchOptions: () => Promise<void>;
   isTransferring: boolean;
@@ -338,6 +344,11 @@ export function GeneralSettingsSection({
   onChangeGameTitle,
   onBlurGameTitle,
   onResetGameTitle,
+  steamMatchSuggestions = [],
+  isSearchingSteamMatch = false,
+  pendingSteamMatch = null,
+  onSelectSteamMatch = () => {},
+  onClearSteamMatch = () => {},
   onChangeLaunchOptions,
   onClearLaunchOptions,
   isTransferring,
@@ -373,32 +384,33 @@ export function GeneralSettingsSection({
       Boolean(game.discs?.some((disc) => disc.path)));
   const transferGameLabel =
     gameSize > 0 ? `${game.title} (${fmt(gameSize)})` : game.title;
+  // Mirrors the context menu's gate (game-context-menu.tsx), which only
+  // requires an executable path — custom games have always been able to
+  // create a Steam shortcut from there, this tab just didn't offer it too.
   let steamShortcutButton: ReactNode = null;
 
-  if (game.shop !== "custom") {
-    if (steamShortcutExists) {
-      steamShortcutButton = (
-        <Button
-          onClick={onDeleteSteamShortcut}
-          theme="danger"
-          disabled={creatingSteamShortcut}
-        >
-          <SteamLogo />
-          {t("delete_steam_shortcut")}
-        </Button>
-      );
-    } else if (hasShortcutLaunchTarget) {
-      steamShortcutButton = (
-        <Button
-          onClick={onCreateSteamShortcut}
-          theme="outline"
-          disabled={creatingSteamShortcut}
-        >
-          <SteamLogo />
-          {t("create_steam_shortcut")}
-        </Button>
-      );
-    }
+  if (steamShortcutExists) {
+    steamShortcutButton = (
+      <Button
+        onClick={onDeleteSteamShortcut}
+        theme="danger"
+        disabled={creatingSteamShortcut}
+      >
+        <SteamLogo />
+        {t("delete_steam_shortcut")}
+      </Button>
+    );
+  } else if (hasShortcutLaunchTarget) {
+    steamShortcutButton = (
+      <Button
+        onClick={onCreateSteamShortcut}
+        theme="outline"
+        disabled={creatingSteamShortcut}
+      >
+        <SteamLogo />
+        {t("create_steam_shortcut")}
+      </Button>
+    );
   }
 
   useEffect(() => {
@@ -485,6 +497,67 @@ export function GeneralSettingsSection({
               {t("clear")}
             </Button>
           </div>
+
+          {game.shop === "custom" &&
+            (pendingSteamMatch ? (
+              <div className="game-options-modal__steam-match">
+                {pendingSteamMatch.iconUrl && (
+                  <img
+                    src={pendingSteamMatch.iconUrl}
+                    alt=""
+                    className="game-options-modal__steam-match-icon"
+                  />
+                )}
+                <span className="game-options-modal__steam-match-label">
+                  {t("custom_game_modal_match_selected", {
+                    title: pendingSteamMatch.title,
+                    ns: "sidebar",
+                  })}
+                </span>
+                <button
+                  type="button"
+                  className="game-options-modal__steam-match-clear"
+                  onClick={onClearSteamMatch}
+                  disabled={updatingGameTitle}
+                  aria-label={t("custom_game_modal_match_clear", {
+                    ns: "sidebar",
+                  })}
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            ) : (
+              (isSearchingSteamMatch || steamMatchSuggestions.length > 0) && (
+                <div className="game-options-modal__steam-match-suggestions">
+                  <span className="game-options-modal__steam-match-suggestions-title">
+                    {isSearchingSteamMatch
+                      ? t("custom_game_modal_match_searching", {
+                          ns: "sidebar",
+                        })
+                      : t("custom_game_modal_match_steam_title", {
+                          ns: "sidebar",
+                        })}
+                  </span>
+                  <ul className="game-options-modal__steam-match-suggestions-list">
+                    {steamMatchSuggestions.map((suggestion) => (
+                      <li key={suggestion.objectId}>
+                        <button
+                          type="button"
+                          className="game-options-modal__steam-match-suggestion"
+                          onClick={() => onSelectSteamMatch(suggestion)}
+                          disabled={updatingGameTitle}
+                        >
+                          {suggestion.iconUrl && (
+                            <img src={suggestion.iconUrl} alt="" />
+                          )}
+                          {suggestion.title}
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )
+            ))}
         </div>
       )}
 

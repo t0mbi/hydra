@@ -15,6 +15,7 @@ import {
   TrashIcon,
 } from "@primer/octicons-react";
 import { Button, ImageCropModal } from "@renderer/components";
+import { computeCenteredCoverCrop } from "@renderer/components/image-crop-modal/image-crop-utils";
 import { useToast, useAppSelector, useUserDetails } from "@renderer/hooks";
 import { useSubscription } from "@renderer/hooks/use-subscription";
 import { generateRandomGradient } from "@renderer/helpers";
@@ -624,6 +625,51 @@ export function GameAssetsSettings({
     }
   };
 
+  const getImageNaturalSize = (
+    path: string
+  ): Promise<{ width: number; height: number }> =>
+    new Promise((resolve, reject) => {
+      const image = new Image();
+      image.onload = () =>
+        resolve({ width: image.naturalWidth, height: image.naturalHeight });
+      image.onerror = () => reject(new Error("Failed to load image"));
+      image.src = `local:${path}`;
+    });
+
+  const applySteamGridDbArtworkDirect = async (
+    assetType: AssetType,
+    tempPath: string,
+    artworkUrl: string,
+    artworkId: number
+  ) => {
+    const naturalSize = await getImageNaturalSize(tempPath);
+    const { region, outputSize } = computeCenteredCoverCrop(
+      naturalSize,
+      ASSET_OUTPUT_SIZE[assetType],
+      assetType === "logo"
+    );
+
+    const { imagePath: croppedImagePath } =
+      await window.electron.cropProfileImage(tempPath, {
+        left: region.left,
+        top: region.top,
+        width: region.width,
+        height: region.height,
+        outputWidth: outputSize.width,
+        outputHeight: outputSize.height,
+        rotation: 0,
+      });
+
+    await finalizeCroppedAsset({
+      assetType,
+      croppedImagePath,
+      displayPath: artworkUrl,
+      artworkId,
+      sourcePath: tempPath,
+      cleanupSource: true,
+    });
+  };
+
   const handleSelectSteamGridDbArtwork = async (
     assetType: AssetType,
     artworkUrl: string,
@@ -631,8 +677,10 @@ export function GameAssetsSettings({
   ): Promise<boolean> => {
     if (!beginAssetFlow()) return false;
 
+    let tempPath: string | null = null;
+
     try {
-      const tempPath = await window.electron.downloadGameArtwork(artworkUrl);
+      tempPath = await window.electron.downloadGameArtwork(artworkUrl);
 
       if (!tempPath) {
         releaseAssetFlow();
@@ -645,10 +693,21 @@ export function GameAssetsSettings({
         return false;
       }
 
-      openAssetCrop(assetType, tempPath, artworkUrl, true, artworkId);
+      // SteamGridDB artwork is applied immediately with a centered/best-fit
+      // crop instead of opening the manual reposition modal (that stays
+      // reserved for user-uploaded custom images).
+      await applySteamGridDbArtworkDirect(
+        assetType,
+        tempPath,
+        artworkUrl,
+        artworkId
+      );
       return false;
     } catch (error) {
       releaseAssetFlow();
+      if (tempPath) {
+        await cleanupTempFile(tempPath);
+      }
       throw error;
     }
   };
@@ -767,40 +826,65 @@ export function GameAssetsSettings({
     releaseAssetFlow();
   };
 
-  const handleApplyCrop = async (croppedImagePath: string) => {
-    const pendingCrop = pendingAssetCrop;
-    if (!pendingCrop) return;
+  const finalizeCroppedAsset = async (params: {
+    assetType: AssetType;
+    croppedImagePath: string;
+    displayPath: string;
+    artworkId: number | null;
+    sourcePath?: string;
+    cleanupSource?: boolean;
+  }) => {
+    const {
+      assetType,
+      croppedImagePath,
+      displayPath,
+      artworkId,
+      sourcePath,
+      cleanupSource,
+    } = params;
 
     let copiedSuccessfully = false;
 
     try {
       const copiedAssetUrl = await window.electron.copyCustomGameAsset(
         croppedImagePath,
-        pendingCrop.assetType
+        assetType
       );
 
       updateAssetPaths(
-        pendingCrop.assetType,
+        assetType,
         copiedAssetUrl.replace("local:", ""),
-        pendingCrop.displayPath
+        displayPath
       );
-      setPendingArtworkSelection({
-        assetType: pendingCrop.assetType,
-        artworkId: pendingCrop.artworkId ?? null,
-      });
+      setPendingArtworkSelection({ assetType, artworkId });
       setPendingPreloadUrl(copiedAssetUrl);
       setPendingUpdateMessage(t("steamgriddb_artwork_updated"));
-      pendingAssetCropRef.current = null;
-      setPendingAssetCrop(null);
-      setIsPreparingAsset(true);
       copiedSuccessfully = true;
     } finally {
       await cleanupTempFile(croppedImagePath);
 
-      if (copiedSuccessfully && pendingCrop.cleanupSource) {
-        await cleanupTempFile(pendingCrop.sourcePath);
+      if (copiedSuccessfully && cleanupSource && sourcePath) {
+        await cleanupTempFile(sourcePath);
       }
     }
+  };
+
+  const handleApplyCrop = async (croppedImagePath: string) => {
+    const pendingCrop = pendingAssetCrop;
+    if (!pendingCrop) return;
+
+    await finalizeCroppedAsset({
+      assetType: pendingCrop.assetType,
+      croppedImagePath,
+      displayPath: pendingCrop.displayPath,
+      artworkId: pendingCrop.artworkId ?? null,
+      sourcePath: pendingCrop.sourcePath,
+      cleanupSource: pendingCrop.cleanupSource,
+    });
+
+    pendingAssetCropRef.current = null;
+    setPendingAssetCrop(null);
+    setIsPreparingAsset(true);
   };
 
   const prepareCustomGameAssets = useCallback(
@@ -1258,23 +1342,21 @@ export function GameAssetsSettings({
           </button>
         )}
 
-        {!isCustomGame(game) && (
-          <GameArtworkPicker
-            key={`${game.shop}:${game.objectId}:${selectedAssetType}`}
-            game={game}
-            assetType={selectedAssetType}
-            onChanged={handleArtworkChanged}
-            disabled={isAssetFlowBusy}
-            selectionVersion={artworkPickerVersion}
-            onSelectArtwork={({ artworkUrl, artworkId }) =>
-              handleSelectSteamGridDbArtwork(
-                selectedAssetType,
-                artworkUrl,
-                artworkId
-              )
-            }
-          />
-        )}
+        <GameArtworkPicker
+          key={`${game.shop}:${game.objectId}:${selectedAssetType}`}
+          game={game}
+          assetType={selectedAssetType}
+          onChanged={handleArtworkChanged}
+          disabled={isAssetFlowBusy}
+          selectionVersion={artworkPickerVersion}
+          onSelectArtwork={({ artworkUrl, artworkId }) =>
+            handleSelectSteamGridDbArtwork(
+              selectedAssetType,
+              artworkUrl,
+              artworkId
+            )
+          }
+        />
       </div>
     </>
   );

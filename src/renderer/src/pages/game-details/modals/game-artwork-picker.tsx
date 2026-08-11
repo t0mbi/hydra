@@ -17,6 +17,7 @@ import {
   getRenderableArtworkUrl,
   isAnimatedArtworkItem,
   isArtworkRowSettled,
+  useAppSelector,
   useGameArtworkGrid,
   useToast,
   useUserDetails,
@@ -406,6 +407,11 @@ export function GameArtworkPicker({
   const { t: tProfile } = useTranslation("user_profile");
   const { showErrorToast, showSuccessToast } = useToast();
   const { userDetails } = useUserDetails();
+  const userPreferences = useAppSelector(
+    (state) => state.userPreferences.value
+  );
+  const hasSteamGridDbApiKey = Boolean(userPreferences?.steamGridDbApiKey);
+  const canBrowseArtwork = Boolean(userDetails) || hasSteamGridDbApiKey;
   const scrollId = useId();
 
   const onError = useCallback(() => {
@@ -432,7 +438,7 @@ export function GameArtworkPicker({
     shop: game.shop,
     objectId: game.objectId,
     assetType,
-    enabled: Boolean(userDetails),
+    enabled: canBrowseArtwork,
     onChanged,
     onError,
     onPicked,
@@ -583,7 +589,7 @@ export function GameArtworkPicker({
     scrollRef.current?.scrollTo({ top: 0 });
   }, [assetType, game.objectId, game.shop]);
 
-  if (!userDetails) {
+  if (!canBrowseArtwork) {
     return (
       <div className="game-artwork__hint">
         {t("steamgriddb_sign_in_required")}

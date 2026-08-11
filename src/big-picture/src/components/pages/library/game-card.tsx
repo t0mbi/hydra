@@ -15,8 +15,8 @@ import {
   getLibraryFocusListItemId,
 } from "./navigation";
 import {
-  ClassicsCoverBadges,
   ClassicsVerticalCoverMedia,
+  getLibraryCoverOverlay,
   useFocusAnimatedCover,
   useLibraryGameCardPresentation,
 } from "./card-presentation";
@@ -105,13 +105,11 @@ export function VerticalLibraryGameCard({
         onImageError={handleCoverImageError}
       />
     ) : null;
-  const coverOverlay =
-    classicsPlatformLabel != null ? (
-      <ClassicsCoverBadges
-        platformLabel={classicsPlatformLabel}
-        emulatorIcon={classicsEmulatorIcon}
-      />
-    ) : null;
+  const coverOverlay = getLibraryCoverOverlay(
+    game,
+    classicsPlatformLabel,
+    classicsEmulatorIcon
+  );
 
   const openContextMenuFromRect = (
     rect: DOMRect,
@@ -214,13 +212,11 @@ export function HorizontalLibraryGameListCard({
   } = useLibraryGameCardPresentation(game, "horizontal");
   const focusId = getLibraryFocusListItemId(game.id);
   const gameDetailsPath = getBigPictureGameDetailsPath(game);
-  const coverOverlay =
-    classicsPlatformLabel != null ? (
-      <ClassicsCoverBadges
-        platformLabel={classicsPlatformLabel}
-        emulatorIcon={classicsEmulatorIcon}
-      />
-    ) : null;
+  const coverOverlay = getLibraryCoverOverlay(
+    game,
+    classicsPlatformLabel,
+    classicsEmulatorIcon
+  );
 
   const openContextMenuFromRect = (
     rect: DOMRect,

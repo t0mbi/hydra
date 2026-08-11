@@ -21,6 +21,7 @@ import type {
   Game,
   LibraryGame,
   ProtonVersion,
+  ShopAssets,
   ShortcutLocation,
 } from "@types";
 import { cloudSyncContext, gameDetailsContext } from "@renderer/context";
@@ -30,8 +31,10 @@ import {
   useDownload,
   useGameCollections,
   useLibrary,
+  useSteamMatchSearch,
   useToast,
   useUserDetails,
+  type SteamMatchSuggestion,
 } from "@renderer/hooks";
 import { useSubscription } from "@renderer/hooks/use-subscription";
 import { RemoveGameFromLibraryModal } from "./remove-from-library-modal";
@@ -116,6 +119,21 @@ export function GameOptionsModal({
   const [showRemoveGameModal, setShowRemoveGameModal] = useState(false);
   const [gameTitle, setGameTitle] = useState(game.title ?? "");
   const [updatingGameTitle, setUpdatingGameTitle] = useState(false);
+  const [pendingSteamMatch, setPendingSteamMatch] =
+    useState<SteamMatchSuggestion | null>(null);
+  const [pendingSteamMatchAssets, setPendingSteamMatchAssets] =
+    useState<ShopAssets | null>(null);
+  // Tracks which match is currently "active" so an asset fetch for a match
+  // the user has since changed away from can't clobber newer state.
+  const pendingSteamMatchRef = useRef<SteamMatchSuggestion | null>(null);
+  const {
+    suggestions: steamMatchSuggestions,
+    isSearching: isSearchingSteamMatch,
+    clearSuggestions: clearSteamMatchSuggestions,
+  } = useSteamMatchSearch(
+    gameTitle,
+    game.shop === "custom" && !pendingSteamMatch
+  );
   const [launchOptions, setLaunchOptions] = useState(game.launchOptions ?? "");
   const [showResetAchievementsModal, setShowResetAchievementsModal] =
     useState(false);
@@ -235,6 +253,23 @@ export function GameOptionsModal({
     setGameTitle(game.title ?? "");
   }, [game.title]);
   useEffect(() => {
+    // Restore the persisted Steam match (if any) so it isn't lost when the
+    // modal is reopened for an already-matched custom game.
+    const persistedMatch: SteamMatchSuggestion | null =
+      game.matchedSteamObjectId
+        ? {
+            objectId: game.matchedSteamObjectId,
+            shop: "steam",
+            title: game.title ?? "",
+            iconUrl: game.iconUrl ?? null,
+          }
+        : null;
+
+    pendingSteamMatchRef.current = persistedMatch;
+    setPendingSteamMatch(persistedMatch);
+    setPendingSteamMatchAssets(null);
+  }, [game.matchedSteamObjectId]);
+  useEffect(() => {
     setSelectedProtonPath(game.protonPath ?? "");
   }, [game.protonPath]);
   useEffect(() => {
@@ -297,12 +332,10 @@ export function GameOptionsModal({
   }, [visible]);
 
   useEffect(() => {
-    if (game.shop !== "custom") {
-      globalThis.window.electron
-        .checkSteamShortcut(game.shop, game.objectId)
-        .then(setSteamShortcutExists)
-        .catch(() => setSteamShortcutExists(false));
-    }
+    globalThis.window.electron
+      .checkSteamShortcut(game.shop, game.objectId)
+      .then(setSteamShortcutExists)
+      .catch(() => setSteamShortcutExists(false));
   }, [game.shop, game.objectId]);
 
   useEffect(() => {
@@ -679,8 +712,45 @@ export function GameOptionsModal({
     setLaunchOptions(v);
     debounceUpdateLaunchOptions(v);
   };
-  const handleChangeGameTitle = (event: React.ChangeEvent<HTMLInputElement>) =>
+  const handleChangeGameTitle = (
+    event: React.ChangeEvent<HTMLInputElement>
+  ) => {
     setGameTitle(event.target.value);
+    if (pendingSteamMatch) {
+      pendingSteamMatchRef.current = null;
+      setPendingSteamMatch(null);
+      setPendingSteamMatchAssets(null);
+    }
+  };
+
+  const handleSelectSteamMatch = (suggestion: SteamMatchSuggestion) => {
+    pendingSteamMatchRef.current = suggestion;
+    setPendingSteamMatch(suggestion);
+    setGameTitle(suggestion.title);
+    clearSteamMatchSuggestions();
+    setPendingSteamMatchAssets(null);
+
+    globalThis.window.electron
+      .getGameAssets(suggestion.objectId, "steam")
+      .then((assets) => {
+        if (pendingSteamMatchRef.current?.objectId !== suggestion.objectId) {
+          return;
+        }
+        setPendingSteamMatchAssets(assets);
+      })
+      .catch((error) => {
+        if (pendingSteamMatchRef.current?.objectId !== suggestion.objectId) {
+          return;
+        }
+        logger.error("Failed to fetch matched Steam game assets", error);
+      });
+  };
+
+  const handleClearSteamMatch = () => {
+    pendingSteamMatchRef.current = null;
+    setPendingSteamMatch(null);
+    setPendingSteamMatchAssets(null);
+  };
 
   const handleBlurGameTitle = async () => {
     if (updatingGameTitle) return;
@@ -690,7 +760,7 @@ export function GameOptionsModal({
       showErrorToast(t("edit_game_modal_fill_required"));
       return;
     }
-    if (trimmed === (game.title ?? "").trim()) {
+    if (trimmed === (game.title ?? "").trim() && !pendingSteamMatch) {
       setGameTitle(game.title ?? "");
       return;
     }
@@ -701,9 +771,19 @@ export function GameOptionsModal({
           shop: game.shop,
           objectId: game.objectId,
           title: trimmed,
-          iconUrl: game.iconUrl || undefined,
-          logoImageUrl: game.logoImageUrl || undefined,
-          libraryHeroImageUrl: game.libraryHeroImageUrl || undefined,
+          iconUrl:
+            pendingSteamMatchAssets?.iconUrl || game.iconUrl || undefined,
+          logoImageUrl:
+            pendingSteamMatchAssets?.logoImageUrl ||
+            game.logoImageUrl ||
+            undefined,
+          libraryHeroImageUrl:
+            pendingSteamMatchAssets?.libraryHeroImageUrl ||
+            game.libraryHeroImageUrl ||
+            undefined,
+          customCoverImageUrl:
+            pendingSteamMatchAssets?.coverImageUrl || undefined,
+          matchedSteamObjectId: pendingSteamMatch?.objectId ?? undefined,
         });
       } else {
         await globalThis.window.electron.updateGameCustomAssets({
@@ -714,6 +794,9 @@ export function GameOptionsModal({
       }
       await Promise.all([updateGame(), updateLibrary()]);
       setGameTitle(trimmed);
+      pendingSteamMatchRef.current = null;
+      setPendingSteamMatch(null);
+      setPendingSteamMatchAssets(null);
     } catch (error) {
       setGameTitle(game.title ?? "");
       showErrorToast(
@@ -1022,6 +1105,11 @@ export function GameOptionsModal({
       onChangeGameTitle: handleChangeGameTitle,
       onBlurGameTitle: handleBlurGameTitle,
       onResetGameTitle: handleResetGameTitle,
+      steamMatchSuggestions,
+      isSearchingSteamMatch,
+      pendingSteamMatch,
+      onSelectSteamMatch: handleSelectSteamMatch,
+      onClearSteamMatch: handleClearSteamMatch,
       onChangeLaunchOptions: handleChangeLaunchOptions,
       onClearLaunchOptions: handleClearLaunchOptions,
       isTransferring,
@@ -1056,6 +1144,11 @@ export function GameOptionsModal({
       handleChangeGameTitle,
       handleBlurGameTitle,
       handleResetGameTitle,
+      steamMatchSuggestions,
+      isSearchingSteamMatch,
+      pendingSteamMatch,
+      handleSelectSteamMatch,
+      handleClearSteamMatch,
       handleChangeLaunchOptions,
       handleClearLaunchOptions,
       isTransferring,

@@ -31,5 +31,6 @@ export * from "./cloud-save";
 export * from "./achievement-notification-presenter-electron";
 export * from "./game-artwork";
 export * from "./game-artwork-cloud";
+export * from "./steam-grid-db-direct";
 export * as emulators from "./emulators";
 export * as retroarch from "./retroarch";

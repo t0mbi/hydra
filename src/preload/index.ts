@@ -1,6 +1,6 @@
 // See the Electron documentation for details on how to use preload scripts:
 // https://www.electronjs.org/docs/latest/tutorial/process-model#preload-scripts
-import { contextBridge, ipcRenderer } from "electron";
+import { contextBridge, ipcRenderer, webUtils } from "electron";
 import { randomUUID } from "node:crypto";
 
 import type {
@@ -796,6 +796,8 @@ contextBridge.exposeInMainWorld("electron", {
     ipcRenderer.invoke("autoLaunch", autoLaunchProps),
   authenticateRealDebrid: (apiToken: string) =>
     ipcRenderer.invoke("authenticateRealDebrid", apiToken),
+  validateSteamGridDbApiKey: (apiKey: string) =>
+    ipcRenderer.invoke("authenticateSteamGridDb", apiKey),
   authenticatePremiumize: (apiToken: string) =>
     ipcRenderer.invoke("authenticatePremiumize", apiToken),
   authenticateAllDebrid: (apiToken: string) =>
@@ -853,7 +855,9 @@ contextBridge.exposeInMainWorld("electron", {
     executablePath: string,
     iconUrl?: string,
     logoImageUrl?: string,
-    libraryHeroImageUrl?: string
+    libraryHeroImageUrl?: string,
+    matchedSteamObjectId?: string | null,
+    customCoverImageUrl?: string | null
   ) =>
     ipcRenderer.invoke(
       "addCustomGameToLibrary",
@@ -861,7 +865,9 @@ contextBridge.exposeInMainWorld("electron", {
       executablePath,
       iconUrl,
       logoImageUrl,
-      libraryHeroImageUrl
+      libraryHeroImageUrl,
+      matchedSteamObjectId,
+      customCoverImageUrl
     ),
   copyCustomGameAsset: (
     sourcePath: string,
@@ -886,6 +892,7 @@ contextBridge.exposeInMainWorld("electron", {
     originalLogoPath?: string;
     originalHeroPath?: string;
     customOriginalCoverPath?: string;
+    matchedSteamObjectId?: string | null;
   }) => ipcRenderer.invoke("updateCustomGame", params),
   updateGameCustomAssets: (params: {
     shop: GameShop;
@@ -1267,6 +1274,7 @@ contextBridge.exposeInMainWorld("electron", {
   getCloudIframeUrl: () => ipcRenderer.invoke("getCloudIframeUrl"),
   showOpenDialog: (options: Electron.OpenDialogOptions) =>
     ipcRenderer.invoke("showOpenDialog", options),
+  getPathForFile: (file: File) => webUtils.getPathForFile(file),
   ...fileExplorerApi,
   showItemInFolder: (path: string) =>
     ipcRenderer.invoke("showItemInFolder", path),
