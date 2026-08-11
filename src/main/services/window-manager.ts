@@ -387,7 +387,9 @@ export class WindowManager {
 
     mainWindow.on("ready-to-show", () => {
       if (!app.isPackaged || isStaging)
-        WindowManager.mainWindow?.webContents.openDevTools();
+        WindowManager.mainWindow?.webContents.openDevTools({
+          mode: "detach",
+        });
       if (shouldLaunchInBigPicture) {
         void WindowManager.openBigPictureWindow();
       } else {
@@ -473,7 +475,7 @@ export class WindowManager {
     this.bigPicture.removeMenu();
 
     if (!app.isPackaged || isStaging) {
-      this.bigPicture.webContents.openDevTools();
+      this.bigPicture.webContents.openDevTools({ mode: "detach" });
     }
 
     const bigPictureInitialHash = userPreferences?.launchToLibraryPage
