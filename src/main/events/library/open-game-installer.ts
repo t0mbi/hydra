@@ -93,19 +93,19 @@ const rescanAndBindExecutableAfterInstall = async (
   objectId: string,
   downloadFolderPath: string,
   winePrefixPath?: string | null
-) => {
+): Promise<string | null> => {
   try {
     const gameKey = levelKeys.game(shop, objectId);
     const game = await gamesSublevel.get(gameKey);
 
-    if (!game || game.executablePath) return;
+    if (!game || game.executablePath) return null;
 
     const executables = GameExecutables.getExecutablesForGame(objectId);
     if (!executables || executables.length === 0) {
       logger.info(
         `[openGameInstaller] Installer exited for ${objectId}, but no known executables to search for -- skipping rescan`
       );
-      return;
+      return null;
     }
 
     logger.info(
@@ -143,7 +143,7 @@ const rescanAndBindExecutableAfterInstall = async (
       // Re-check under the lock of "hasn't been set since we started" --
       // the user may have set it manually while the installer was running.
       const latestGame = await gamesSublevel.get(gameKey);
-      if (!latestGame || latestGame.executablePath) return;
+      if (!latestGame || latestGame.executablePath) return null;
 
       logger.info(
         `[openGameInstaller] Auto-detected executable after installer exit for ${objectId}: ${foundExePath}`
@@ -155,17 +155,19 @@ const rescanAndBindExecutableAfterInstall = async (
 
       void runAutomaticCloudSaveSync(objectId, shop, "environment-changed");
       WindowManager.sendToAppWindows("on-library-batch-complete");
-      return;
+      return foundExePath;
     }
 
     logger.info(
       `[openGameInstaller] Scanned ${candidateFolders.length} candidate folder(s) for ${objectId}, no matching executable found`
     );
+    return null;
   } catch (error) {
     logger.error(
       `[openGameInstaller] Error scanning for executable after install: ${objectId}`,
       error
     );
+    return null;
   }
 };
 
@@ -350,4 +352,38 @@ const openGameInstaller = async (
   return true;
 };
 
+// On-demand version of rescanAndBindExecutableAfterInstall, for when a user
+// installed the game themselves (outside Hydra's own installer flow) and
+// wants to tell Hydra "this is already installed" without knowing the exact
+// executable path.
+const rescanGameExecutable = async (
+  _event: Electron.IpcMainInvokeEvent,
+  shop: GameShop,
+  objectId: string
+): Promise<string | null> => {
+  const downloadKey = levelKeys.game(shop, objectId);
+  const download = await downloadsSublevel.get(downloadKey);
+  const game = await gamesSublevel.get(downloadKey).catch(() => null);
+
+  if (!download?.folderName) return null;
+
+  const gamePath = path.join(
+    download.downloadPath ?? (await getDownloadsPath()),
+    download.folderName
+  );
+
+  const effectiveWinePrefixPath = Wine.getEffectivePrefixPath(
+    game?.winePrefixPath,
+    objectId
+  );
+
+  return rescanAndBindExecutableAfterInstall(
+    shop,
+    objectId,
+    gamePath,
+    effectiveWinePrefixPath
+  );
+};
+
 registerEvent("openGameInstaller", openGameInstaller);
+registerEvent("rescanGameExecutable", rescanGameExecutable);

@@ -430,6 +430,10 @@ declare global {
       shop: GameShop,
       objectId: string
     ) => Promise<"install" | "open-folder">;
+    rescanGameExecutable: (
+      shop: GameShop,
+      objectId: string
+    ) => Promise<string | null>;
     openGameInstallerPath: (shop: GameShop, objectId: string) => Promise<void>;
     openGameWinetricks: (shop: GameShop, objectId: string) => Promise<boolean>;
     openGameExecutablePath: (shop: GameShop, objectId: string) => Promise<void>;
