@@ -63,11 +63,22 @@ const downloadAsset = async (
 };
 
 const resolveShortcutAssetUrls = (game: Game, assets: ShopAssets | null) => ({
-  icon: game.customIconUrl ?? assets?.iconUrl ?? null,
-  hero: game.customHeroImageUrl ?? assets?.libraryHeroImageUrl ?? null,
-  logo: game.customLogoImageUrl ?? assets?.logoImageUrl ?? null,
+  // `custom*ImageUrl` is the cross-device custom-upload override (any shop).
+  // `assets` comes from the shop's catalogue API and is null for "custom"
+  // (non-Steam) games. `game.iconUrl`/`logoImageUrl`/`libraryHeroImageUrl`
+  // are populated at add/match time (see add-custom-game-to-library.ts and
+  // update-custom-game.ts) from the matched Steam game's real artwork, so
+  // they're the right fallback for custom games and a safe last resort
+  // (e.g. a transient API failure) for everything else.
+  icon: game.customIconUrl ?? assets?.iconUrl ?? game.iconUrl ?? null,
+  hero:
+    game.customHeroImageUrl ??
+    assets?.libraryHeroImageUrl ??
+    game.libraryHeroImageUrl ??
+    null,
+  logo: game.customLogoImageUrl ?? assets?.logoImageUrl ?? game.logoImageUrl ?? null,
   cover: game.customCoverImageUrl ?? assets?.coverImageUrl ?? null,
-  library: assets?.libraryImageUrl ?? null,
+  library: assets?.libraryImageUrl ?? game.iconUrl ?? null,
 });
 
 const downloadAssetsFromSteam = async (
