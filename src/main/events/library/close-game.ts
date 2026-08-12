@@ -31,6 +31,28 @@ const closeGame = async (
   if (!game) return;
 
   const launchedPid = launchedGamePids.get(levelKeys.game(shop, objectId));
+
+  // executablePath is an AppUserModelID here, not a real path -- it'll
+  // never match a running process's exe path below, so close the tracked
+  // launch PID directly instead (see launch-game.ts/process-watcher.ts).
+  if (game.launchesViaMicrosoftStore) {
+    if (launchedPid === undefined) return;
+
+    try {
+      process.kill(launchedPid);
+    } catch {
+      sudo.exec(
+        getKillCommand(launchedPid),
+        { name: app.getName() },
+        (error, _stdout, _stderr) => {
+          logger.error(error);
+        }
+      );
+    }
+
+    return;
+  }
+
   const trackingPaths = game.trackingExecutablePaths?.filter(Boolean) ?? [];
   const targetPaths =
     game.executablePath && !isWindowsBatchFile(game.executablePath)

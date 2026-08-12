@@ -10,7 +10,9 @@ const openGameExecutablePath = async (
 ) => {
   const game = await gamesSublevel.get(levelKeys.game(shop, objectId));
 
-  if (!game || !game.executablePath) return;
+  // executablePath is an AppUserModelID for these, not a real path -- see
+  // parse-executable-path.ts. Nothing to show in a folder.
+  if (!game || !game.executablePath || game.launchesViaMicrosoftStore) return;
 
   shell.showItemInFolder(game.executablePath);
 };

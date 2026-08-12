@@ -9,6 +9,7 @@ import {
 } from "@main/helpers/update-executable-path";
 import { logger } from "@main/services";
 import { runAutomaticCloudSaveSync } from "@main/services/cloud-save";
+import { resolveInstalledUwpAppId } from "@main/helpers/resolve-uwp-app-id";
 import type { GameShop } from "@types";
 
 const updateExecutablePath = async (
@@ -17,14 +18,24 @@ const updateExecutablePath = async (
   objectId: string,
   executablePath: string | null
 ) => {
-  const parsedPath = executablePath
-    ? parseExecutablePath(executablePath)
-    : null;
+  const parsed = executablePath ? parseExecutablePath(executablePath) : null;
+  let parsedPath = parsed?.executablePath ?? null;
+  const launchesViaMicrosoftStore = parsed?.launchesViaMicrosoftStore ?? false;
 
   const gameKey = levelKeys.game(shop, objectId);
 
   const game = await gamesSublevel.get(gameKey);
   if (!game) return;
+
+  // See add-custom-game-to-library.ts -- the shortcut's own AppUserModelID
+  // isn't always the real, activatable one.
+  if (launchesViaMicrosoftStore) {
+    const resolvedAppId = await resolveInstalledUwpAppId(game.title);
+    if (resolvedAppId) {
+      parsedPath = resolvedAppId;
+    }
+  }
+
   const environmentChanged =
     parsedPath !== null && game.executablePath !== parsedPath;
 
@@ -34,14 +45,17 @@ const updateExecutablePath = async (
     installedSizeInBytes: parsedPath ? game.installedSizeInBytes : null,
     automaticCloudSync:
       executablePath === null ? false : game.automaticCloudSync,
+    launchesViaMicrosoftStore,
   });
 
   if (environmentChanged) {
     void runAutomaticCloudSaveSync(objectId, shop, "environment-changed");
   }
 
-  // Calculate size in background and update later
-  if (parsedPath) {
+  // Calculate size in background and update later. Skipped for Microsoft
+  // Store games -- parsedPath is an AppUserModelID there, not a real path,
+  // so there's no folder to measure.
+  if (parsedPath && !launchesViaMicrosoftStore) {
     findGameRootFromExe(parsedPath)
       .then(async (gameRoot) => {
         if (!gameRoot) {
@@ -75,8 +89,9 @@ const updateTrackingExecutablePaths = async (
   objectId: string,
   trackingExecutablePaths: string[]
 ) => {
-  const parsedPaths = trackingExecutablePaths.map((trackingExecutablePath) =>
-    parseExecutablePath(trackingExecutablePath)
+  const parsedPaths = trackingExecutablePaths.map(
+    (trackingExecutablePath) =>
+      parseExecutablePath(trackingExecutablePath).executablePath
   );
 
   const gameKey = levelKeys.game(shop, objectId);

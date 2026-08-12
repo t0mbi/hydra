@@ -239,6 +239,20 @@ const getSystemProcessMap = async () => {
   return { processMap, winePrefixMap, linuxProcesses };
 };
 
+const isPidAlive = (pid: number | undefined): boolean => {
+  if (pid === undefined) return false;
+
+  try {
+    // Signal 0 doesn't actually send anything -- it's the standard way to
+    // check a PID still exists (Node translates this correctly on Windows
+    // too), without needing the Rust process map to know about it.
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const hasLinuxCompatibilityProcessMatch = (
   game: Game,
   executablePath: string,
@@ -306,6 +320,27 @@ export const watchProcesses = async () => {
   for (const game of games) {
     const gameKey = levelKeys.game(game.shop, game.objectId);
     const executablePath = game.executablePath;
+
+    // executablePath here is an AppUserModelID, not a real path -- nothing
+    // to match against processMap. Track liveness of the PID
+    // NativeAddon.activateUwpApp returned at launch instead (see
+    // launch-game.ts).
+    if (game.launchesViaMicrosoftStore) {
+      const hasProcess = isPidAlive(launchedGamePids.get(gameKey));
+
+      if (hasProcess) {
+        if (gamesPlaytime.has(gameKey)) {
+          onTickGame(game);
+        } else {
+          onOpenGame(game);
+        }
+      } else if (gamesPlaytime.has(gameKey)) {
+        onCloseGame(game);
+      }
+
+      continue;
+    }
+
     if (!executablePath) {
       if (gameExecutables[game.objectId]) {
         await findGamePathByProcess(processMap, winePrefixMap, game.objectId);

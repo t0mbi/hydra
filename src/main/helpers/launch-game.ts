@@ -565,16 +565,45 @@ const launchResolvedGame = async (
  * Shows the launcher window and launches the game executable
  * Shared between deep link handler and openGame event
  */
+/**
+ * Microsoft Store/Xbox apps have no conventional executable to spawn -- see
+ * parse-executable-path.ts. Launching them means activating the app by its
+ * AppUserModelID (executablePath, in this case) through the same COM API
+ * Explorer itself uses, which hands back the real launched process ID.
+ * None of the surrounding cloud-save/Wine-compat/preflight machinery below
+ * applies to these (no real filesystem exe to inspect), so this short-
+ * circuits straight past it. Achievements/cloud-save-on-open/hide-to-tray
+ * still work normally once process-watcher.ts sees the tracked PID running
+ * and calls onOpenGame -- nothing here needs to duplicate that.
+ */
+const launchMicrosoftStoreApp = (
+  gameKey: string,
+  appUserModelId: string
+): number | null => {
+  try {
+    const pid = NativeAddon.activateUwpApp(appUserModelId);
+    launchedGamePids.set(gameKey, pid);
+    return pid;
+  } catch (error) {
+    logger.error("Failed to activate Microsoft Store app", error);
+    return null;
+  }
+};
+
 const launchGameWithCloudSaveChecks = async (
   options: LaunchGameOptions
 ): Promise<number | null> => {
   const { shop, objectId, executablePath, launchOptions } = options;
 
-  const parsedPath = parseExecutablePath(executablePath);
-
   const gameKey = levelKeys.game(shop, objectId);
   const game = await gamesSublevel.get(gameKey);
   clearCloudSaveLaunchGuard(objectId, shop);
+
+  if (game?.launchesViaMicrosoftStore) {
+    return launchMicrosoftStoreApp(gameKey, executablePath);
+  }
+
+  const parsedPath = parseExecutablePath(executablePath).executablePath;
 
   const userPreferences = await db
     .get<string, UserPreferences | null>(levelKeys.userPreferences, {

@@ -351,6 +351,7 @@
     "add_tracking_executable": "Add executable",
     "game_executable": "Game executable",
     "bat_tracking_warning": "We can't track the playtime if .bat selected. Please add .exe of the game so we can track it",
+    "microsoft_store_app_notice": "This is a Microsoft Store / Xbox app. Launching and playtime tracking work, but \"Add to Steam\" and cloud save sync aren't supported for this game type yet.",
     "open_folder": "Open folder",
     "open_save_folder": "Open save folder",
     "searching_save_folder": "Searching save folder...",

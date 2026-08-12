@@ -212,6 +212,14 @@ const createSteamShortcut = async (
   if (!game.executablePath && game.shop !== "launchbox") {
     throw new Error("No executable path found for game");
   }
+  if (game.launchesViaMicrosoftStore) {
+    // executablePath is an AppUserModelID, not a real path -- Steam has no
+    // way to launch that itself (Hydra launches it via a native COM call,
+    // see launch-game.ts), so a shortcut here would just be broken.
+    throw new Error(
+      "Adding Microsoft Store / Xbox apps to Steam isn't supported yet"
+    );
+  }
   const classicsDiscPath =
     game.selectedDiscPath ?? game.discs?.[0]?.path ?? null;
   if (

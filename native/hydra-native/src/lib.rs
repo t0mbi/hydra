@@ -1,5 +1,6 @@
 mod cloud_save;
 mod constants;
+mod uwp;
 
 pub use cloud_save::hashing::{build_snapshot_aggregate_hash, hash_local_save_file};
 pub use cloud_save::local_snapshot::build_local_game_snapshot;
@@ -156,6 +157,15 @@ fn process_friend_image_sync(
         mime_type: "image/webp".to_string(),
         is_animated: false,
     })
+}
+
+/// Launches a Microsoft Store / Xbox app game and returns the process ID of
+/// the launched instance, so it can be tracked the same way as any other
+/// game process. `arguments` is passed straight through to the app's own
+/// activation contract (most games ignore it).
+#[napi]
+pub fn activate_uwp_app(app_user_model_id: String, arguments: String) -> napi::Result<u32> {
+    uwp::activate_uwp_app(&app_user_model_id, &arguments).map_err(Error::from_reason)
 }
 
 #[napi]

@@ -603,7 +603,7 @@ export function GeneralSettingsSection({
             />
 
             <div className="game-options-modal__executable-field-buttons">
-              {game.executablePath && (
+              {game.executablePath && !game.launchesViaMicrosoftStore && (
                 <Button
                   type="button"
                   theme="outline"
@@ -631,6 +631,12 @@ export function GeneralSettingsSection({
                 )}
             </div>
           </div>
+
+          {game.launchesViaMicrosoftStore && (
+            <p className="game-options-modal__warning">
+              {t("microsoft_store_app_notice")}
+            </p>
+          )}
 
           {supportsTrackingExecutables(game.executablePath) && (
             <div className="game-options-modal__tracking-executable">

@@ -3,17 +3,41 @@ import { gamesSublevel, gamesShopAssetsSublevel, levelKeys } from "@main/level";
 import { randomUUID } from "node:crypto";
 import type { GameShop } from "@types";
 import { GameExecutables } from "@main/services";
+import { parseExecutablePath } from "../helpers/parse-executable-path";
+import { resolveInstalledUwpAppId } from "@main/helpers/resolve-uwp-app-id";
 
 const addCustomGameToLibrary = async (
   _event: Electron.IpcMainInvokeEvent,
   title: string,
-  executablePath: string,
+  droppedExecutablePath: string,
   iconUrl?: string,
   logoImageUrl?: string,
   libraryHeroImageUrl?: string,
   matchedSteamObjectId?: string | null,
   customCoverImageUrl?: string | null
 ) => {
+  // Dragging a .lnk shortcut onto Hydra should add the game it points to,
+  // not the shortcut file itself -- resolve it here, the same way
+  // update-executable-path.ts already does when the path is changed later.
+  // For a Microsoft Store/Xbox app shortcut, executablePath ends up being
+  // its AppUserModelID (see parse-executable-path.ts) -- a stable,
+  // unique-per-app string, so the plain equality check below still works
+  // correctly as a duplicate-game check.
+  const parsed = parseExecutablePath(droppedExecutablePath);
+  let executablePath = parsed.executablePath;
+  const launchesViaMicrosoftStore = parsed.launchesViaMicrosoftStore;
+
+  // The shortcut's own AppUserModelID isn't always the real, activatable
+  // one -- Xbox App-created shortcuts carry a launcher-specific alias
+  // instead (confirmed: ActivateApplication rejects it with E_INVALIDARG).
+  // Cross-check against Windows' own installed-app list and prefer that.
+  if (launchesViaMicrosoftStore) {
+    const resolvedAppId = await resolveInstalledUwpAppId(title);
+    if (resolvedAppId) {
+      executablePath = resolvedAppId;
+    }
+  }
+
   const objectId = randomUUID();
   const shop: GameShop = "custom";
   const gameKey = levelKeys.game(shop, objectId);
@@ -71,6 +95,7 @@ const addCustomGameToLibrary = async (
     executablePath,
     executablePathUpdatedAt: new Date(),
     launchOptions: null,
+    launchesViaMicrosoftStore: launchesViaMicrosoftStore ?? false,
     favorite: false,
     automaticCloudSync: false,
     hasManuallyUpdatedPlaytime: false,

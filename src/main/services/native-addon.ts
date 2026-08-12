@@ -50,6 +50,7 @@ type HydraNativeModule = {
     preserveAnimation: boolean
   ) => Promise<NativeProcessFriendImageResponse>;
   listProcesses: () => ProcessPayload[];
+  activateUwpApp: (appUserModelId: string, arguments_: string) => number;
   buildLocalGameSnapshotPipeline: (
     input: BuildLocalGameSnapshotPipelineInput
   ) => Promise<NativeLocalGameSnapshotPipelineResult>;
@@ -372,6 +373,16 @@ export class NativeAddon {
     input: BuildLocalGameSnapshotPipelineInput
   ) {
     return this.load().buildLocalGameSnapshotPipeline(input);
+  }
+
+  /**
+   * Launches a Microsoft Store/Xbox app via its AppUserModelID and returns
+   * the real process ID of the launched game, so it can be tracked the same
+   * way as any other game process (see parse-executable-path.ts for why
+   * these apps have no conventional executablePath to spawn instead).
+   */
+  public static activateUwpApp(appUserModelId: string): number {
+    return this.load().activateUwpApp(appUserModelId, "");
   }
 
   public static getSaveRulesForGame(input: GetSaveRulesForGameInput) {

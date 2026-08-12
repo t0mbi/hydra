@@ -57,6 +57,13 @@ export interface Game {
   protonPath?: string | null;
   executablePath?: string | null;
   executablePathUpdatedAt?: Date | null;
+  // True when executablePath is actually an AppUserModelID, not a real
+  // path -- Microsoft Store/Xbox apps have no conventional .exe target of
+  // their own (see parse-executable-path.ts). Launched via
+  // NativeAddon.activateUwpApp (launch-game.ts) instead of spawn(), and
+  // tracked in process-watcher.ts by the PID that call returns rather than
+  // the usual executable-name matching.
+  launchesViaMicrosoftStore?: boolean;
   trackingExecutablePaths?: string[] | null;
   trackingExecutablePathsUpdatedAt?: Date | null;
   launchOptions?: string | null;
