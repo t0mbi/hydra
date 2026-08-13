@@ -199,7 +199,10 @@ export function Sidebar() {
       )}
 
       {userDetails === null && !shouldRenderAchievementsSection && (
-        <SidebarSection title={t("achievements")}>
+        <SidebarSection
+          title={t("achievements")}
+          defaultOpen={hasActiveSubscription}
+        >
           <div className="achievements-placeholder">
             <LockIcon size={36} />
             <h3>{t("sign_in_to_see_achievements")}</h3>
@@ -240,6 +243,7 @@ export function Sidebar() {
                 })
               : t("achievements")
           }
+          defaultOpen={hasActiveSubscription}
         >
           <ul className="list">
             <RetroAchievementsConnectBanner />

@@ -7,6 +7,7 @@ export interface SidebarSectionProps {
   subtitle?: string;
   subtitleHref?: string;
   children: React.ReactNode;
+  defaultOpen?: boolean;
 }
 
 export function SidebarSection({
@@ -14,10 +15,19 @@ export function SidebarSection({
   subtitle,
   subtitleHref,
   children,
+  defaultOpen = true,
 }: SidebarSectionProps) {
   const content = useRef<HTMLDivElement>(null);
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(defaultOpen);
   const [height, setHeight] = useState(0);
+
+  // Only auto-*open* when a gate this depends on newly passes (e.g. the
+  // user subscribes to Hydra Cloud while this section is already mounted,
+  // right below the button that starts that flow) -- never auto-collapse,
+  // so a manual expand isn't fought if defaultOpen flips back to false.
+  useEffect(() => {
+    if (defaultOpen) setIsOpen(true);
+  }, [defaultOpen]);
 
   useEffect(() => {
     if (content.current && content.current.scrollHeight !== height) {
