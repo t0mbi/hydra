@@ -3,6 +3,8 @@ import { getGameAssets } from "@main/events/catalogue/get-game-assets";
 import { getDirectorySize } from "@main/events/helpers/get-directory-size";
 import { findGameExecutableInFolder } from "@main/helpers/find-game-executable";
 import { updateGameExecutablePath } from "@main/helpers/update-executable-path";
+import { moveDirectory } from "@main/helpers/move-directory";
+import { detectDirectRipExecutable } from "@main/helpers/detect-direct-rip-executable";
 import { db, downloadsSublevel, gamesSublevel, levelKeys } from "@main/level";
 import {
   Downloader,
@@ -11,6 +13,7 @@ import {
 } from "@shared";
 import type {
   ClassicsDisc,
+  Download,
   EmulatorSystem,
   Game,
   GameShop,
@@ -28,6 +31,7 @@ import * as emulators from "./emulators";
 import * as retroarch from "./retroarch";
 import { getPathType } from "./extraction-path";
 import { GameExecutables } from "./game-executables";
+import { PythonRPC } from "./python-rpc";
 import { logger } from "./logger";
 import { platformToRetroArchPlatform, platformToSystem } from "@main/helpers";
 import { getWindowsVbsPath } from "@main/helpers/shortcut-launch";
@@ -401,12 +405,6 @@ export class GameFilesManager {
         return;
       }
 
-      const executables = GameExecutables.getExecutablesForGame(this.objectId);
-
-      if (!executables || executables.length === 0) {
-        return;
-      }
-
       if (!download.folderName) {
         return;
       }
@@ -420,18 +418,36 @@ export class GameFilesManager {
         return;
       }
 
-      const foundExePath = await findGameExecutableInFolder(
+      const executables =
+        GameExecutables.getExecutablesForGame(this.objectId) ?? [];
+
+      // The community-maintained catalogue doesn't know every repack's
+      // exe filename, especially for less common/newer titles -- when it
+      // comes up empty, fall back to the same recursive "single real game
+      // exe" heuristic open-game-installer.ts's manual Install button
+      // already uses, instead of leaving an unrecognized direct rip
+      // undetected entirely.
+      const catalogMatch = await findGameExecutableInFolder(
         gameFolderPath,
         executables
       );
+      const foundExePath =
+        catalogMatch ?? (await detectDirectRipExecutable(gameFolderPath));
 
       if (foundExePath) {
+        const finalExePath = await this.relocateToInstallPath(
+          game,
+          download,
+          gameFolderPath,
+          foundExePath
+        );
+
         logger.info(
-          `[GameFilesManager] Auto-detected executable for ${this.objectId}: ${foundExePath}`
+          `[GameFilesManager] Auto-detected executable for ${this.objectId}: ${finalExePath}`
         );
 
         await gamesSublevel.put(this.gameKey, {
-          ...updateGameExecutablePath(game, foundExePath),
+          ...updateGameExecutablePath(game, finalExePath),
         });
         void runAutomaticCloudSaveSync(
           this.objectId,
@@ -448,6 +464,120 @@ export class GameFilesManager {
         `[GameFilesManager] Error searching for executable: ${this.objectId}`,
         err
       );
+    }
+  }
+
+  // Windows-illegal filename characters, plus trailing dots/spaces (also
+  // invalid there) and collapsed whitespace left behind by stripping them.
+  private sanitizeInstallFolderName(title: string): string {
+    return title
+      .replace(/[<>:"/\\|?*]/g, "")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/[.\s]+$/, "");
+  }
+
+  /**
+   * A download that searchAndBindExecutable was able to bind straight away
+   * (no installer wizard needed -- see settings-context-general.tsx's
+   * "Install path" description) is exactly what should move out of the
+   * downloads folder and into the user's real game library, renamed to the
+   * catalogue's title instead of whatever the repack folder was called.
+   * Only runs when Install path is configured; a no-op (returns exePath
+   * unchanged) otherwise, or if anything about the move looks unsafe (same
+   * location already, or a folder already exists at the destination -- this
+   * never overwrites/merges). Best-effort: any failure just leaves the game
+   * where it already was rather than blocking the rest of the bind flow.
+   */
+  private async relocateToInstallPath(
+    game: Game,
+    download: Download,
+    currentFolderPath: string,
+    exePath: string
+  ): Promise<string> {
+    try {
+      const userPreferences = await db.get<string, UserPreferences | null>(
+        levelKeys.userPreferences,
+        { valueEncoding: "json" }
+      );
+
+      const installPath = userPreferences?.installPath;
+      if (!installPath) return exePath;
+
+      const sanitizedTitle = this.sanitizeInstallFolderName(game.title);
+      if (!sanitizedTitle) return exePath;
+
+      const targetFolderPath = path.join(installPath, sanitizedTitle);
+
+      const normalize = (value: string) => {
+        const resolved = path.resolve(value);
+        return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+      };
+
+      if (normalize(currentFolderPath) === normalize(targetFolderPath)) {
+        return exePath;
+      }
+
+      if (fs.existsSync(targetFolderPath)) {
+        logger.warn(
+          `[GameFilesManager] Skipping move to install path for ${this.objectId}: ${targetFolderPath} already exists`
+        );
+        return exePath;
+      }
+
+      let currentDownload = download;
+
+      // A still-seeding torrent has the Python/libtorrent side actively
+      // holding file handles open at currentFolderPath -- moving the files
+      // out from under it would corrupt that session. Stop seeding and
+      // confirm it before touching anything on disk; if the pause call
+      // itself fails, abort the move rather than gamble on an unconfirmed
+      // seed state.
+      if (
+        currentDownload.downloader === Downloader.Torrent &&
+        currentDownload.status === "seeding"
+      ) {
+        logger.info(
+          `[GameFilesManager] Pausing seeding for ${this.objectId} before moving to install path`
+        );
+
+        currentDownload = {
+          ...currentDownload,
+          status: "complete",
+          shouldSeed: false,
+        };
+        await downloadsSublevel.put(this.gameKey, currentDownload);
+        WindowManager.sendDownloadsUpdated();
+
+        await PythonRPC.rpc.call("action", {
+          action: "pause_seeding",
+          game_id: this.gameKey,
+        });
+      }
+
+      logger.info(
+        `[GameFilesManager] Moving ${this.objectId} to install path: ${currentFolderPath} -> ${targetFolderPath}`
+      );
+
+      await fs.promises.mkdir(installPath, { recursive: true });
+      await moveDirectory(currentFolderPath, targetFolderPath);
+
+      const relativeExePath = path.relative(currentFolderPath, exePath);
+      const newExePath = path.join(targetFolderPath, relativeExePath);
+
+      await downloadsSublevel.put(this.gameKey, {
+        ...currentDownload,
+        downloadPath: installPath,
+        folderName: sanitizedTitle,
+      });
+
+      return newExePath;
+    } catch (error) {
+      logger.error(
+        `[GameFilesManager] Failed to move ${this.objectId} to install path`,
+        error
+      );
+      return exePath;
     }
   }
 

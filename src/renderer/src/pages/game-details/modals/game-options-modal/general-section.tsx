@@ -378,6 +378,20 @@ export function GeneralSettingsSection({
   const gameSize = game.installedSizeInBytes ?? 0;
   const progressPercent = Math.round(transferProgress * 100);
   const transferredBytes = gameSize * transferProgress;
+  // Games added via one of the "browse installed X games" pickers (Xbox,
+  // Steam, Epic) have no conventional executablePath to select/open -- see
+  // external-launch.ts on the main side, mirrored here since the renderer
+  // doesn't import main-process code.
+  const isExternalLaunchGame = Boolean(
+    game.launchesViaMicrosoftStore ||
+      game.launchesViaSteamProtocol ||
+      game.launchesViaEpicProtocol
+  );
+  const externalInstallLocation =
+    game.uwpInstallLocation ??
+    game.steamInstallLocation ??
+    game.epicInstallLocation ??
+    null;
   const hasShortcutLaunchTarget =
     Boolean(game.executablePath) ||
     (game.shop === "launchbox" &&
@@ -603,7 +617,8 @@ export function GeneralSettingsSection({
             />
 
             <div className="game-options-modal__executable-field-buttons">
-              {game.executablePath && !game.launchesViaMicrosoftStore && (
+              {((game.executablePath && !isExternalLaunchGame) ||
+                (isExternalLaunchGame && externalInstallLocation)) && (
                 <Button
                   type="button"
                   theme="outline"
@@ -635,6 +650,16 @@ export function GeneralSettingsSection({
           {game.launchesViaMicrosoftStore && (
             <p className="game-options-modal__warning">
               {t("microsoft_store_app_notice")}
+            </p>
+          )}
+          {game.launchesViaSteamProtocol && (
+            <p className="game-options-modal__warning">
+              {t("steam_protocol_app_notice")}
+            </p>
+          )}
+          {game.launchesViaEpicProtocol && (
+            <p className="game-options-modal__warning">
+              {t("epic_protocol_app_notice")}
             </p>
           )}
 

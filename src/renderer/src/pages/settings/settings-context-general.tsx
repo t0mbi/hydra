@@ -57,6 +57,7 @@ export function SettingsContextGeneral({
 
   const [form, setForm] = useState({
     downloadsPath: "",
+    installPath: "",
     language: "",
     preferQuitInsteadOfHiding: false,
     runAtStartup: false,
@@ -101,6 +102,7 @@ export function SettingsContextGeneral({
 
     setForm({
       downloadsPath: userPreferences.downloadsPath ?? defaultDownloadsPath,
+      installPath: userPreferences.installPath ?? "",
       language: language ?? "en",
       preferQuitInsteadOfHiding:
         userPreferences.preferQuitInsteadOfHiding ?? false,
@@ -166,6 +168,22 @@ export function SettingsContextGeneral({
     });
   };
 
+  const handleChooseInstallPath = async () => {
+    const { filePaths } = await window.electron.showOpenDialog({
+      defaultPath: form.installPath || undefined,
+      properties: ["openDirectory"],
+    });
+
+    const path = filePaths?.[0];
+    if (!path) return;
+
+    handleChange({ installPath: path });
+  };
+
+  const handleClearInstallPath = () => {
+    handleChange({ installPath: "" });
+  };
+
   const handleConfirmDownloadDirectoryReplacement = async () => {
     if (!downloadDirectoryReplacement || !defaultDownloadsPath) {
       return;
@@ -200,6 +218,27 @@ export function SettingsContextGeneral({
             <Button theme="outline" onClick={handleChooseDownloadsPath}>
               {t("change")}
             </Button>
+          }
+        />
+
+        <TextField
+          label={t("install_path")}
+          hint={t("install_path_description")}
+          value={form.installPath}
+          placeholder={t("install_path_placeholder")}
+          readOnly
+          disabled
+          rightContent={
+            <>
+              <Button theme="outline" onClick={handleChooseInstallPath}>
+                {t("change")}
+              </Button>
+              {form.installPath && (
+                <Button theme="outline" onClick={handleClearInstallPath}>
+                  {t("clear")}
+                </Button>
+              )}
+            </>
           }
         />
 

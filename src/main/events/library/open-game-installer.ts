@@ -9,9 +9,11 @@ import {
   rankExecutableCandidates,
   type KnownGameExecutable,
 } from "@main/helpers/game-executable-ranking";
+import { detectDirectRipExecutable } from "@main/helpers/detect-direct-rip-executable";
+import { collectAccessibleFilePaths } from "@main/helpers/collect-accessible-file-paths";
 import { registerEvent } from "../register-event";
-import { downloadsSublevel, gamesSublevel, levelKeys } from "@main/level";
-import { GameShop } from "@types";
+import { db, downloadsSublevel, gamesSublevel, levelKeys } from "@main/level";
+import { GameShop, UserPreferences } from "@types";
 import {
   GameExecutables,
   logger,
@@ -27,55 +29,6 @@ import {
 // any files. This scans the plausible install destinations once the
 // installer process actually exits, so the game is recognized as installed
 // without the user having to set the executable path manually.
-//
-// Program Files on Windows contains a long tail of folders locked down to
-// TrustedInstaller/System that throw EPERM even for elevated processes --
-// WindowsApps, various Windows Defender folders, etc. There's no reliable
-// list of which ones; fs.readdir's `recursive` option also aborts the
-// *entire* walk on the first unreadable subdirectory it hits, so scanning
-// Program Files as one big recursive tree means a single restricted folder
-// anywhere in the tree can silently block finding an otherwise perfectly
-// accessible install elsewhere under it. This walks manually instead,
-// catching permission errors per-directory and just skipping that subtree,
-// so one inaccessible folder never takes out the rest of the scan.
-const MAX_INSTALL_SCAN_DEPTH = 6;
-
-const collectAccessibleFilePaths = async (
-  rootPath: string
-): Promise<string[]> => {
-  const filePaths: string[] = [];
-
-  const walk = async (currentPath: string, depth: number) => {
-    if (depth > MAX_INSTALL_SCAN_DEPTH) return;
-
-    let entries: fs.Dirent[];
-    try {
-      entries = await fs.promises.readdir(currentPath, {
-        withFileTypes: true,
-      });
-    } catch {
-      // Expected for OS-protected folders (WindowsApps, Defender, etc.) --
-      // not an error worth surfacing, just an inaccessible subtree to skip.
-      return;
-    }
-
-    await Promise.all(
-      entries.map(async (entry) => {
-        const entryPath = path.join(currentPath, entry.name);
-
-        if (entry.isDirectory()) {
-          await walk(entryPath, depth + 1);
-        } else if (entry.isFile()) {
-          filePaths.push(path.relative(rootPath, entryPath));
-        }
-      })
-    );
-  };
-
-  await walk(rootPath, 0);
-  return filePaths;
-};
-
 const findGameExecutableResilient = async (
   folderPath: string,
   executables: KnownGameExecutable[]
@@ -113,6 +66,24 @@ const rescanAndBindExecutableAfterInstall = async (
     );
 
     const candidateFolders = [downloadFolderPath];
+
+    // The user's own game library folder (Settings > General), separate
+    // from downloadsPath -- e.g. a game installed via a repack's own
+    // installer to D:\Games\... instead of landing under the downloads
+    // folder Hydra manages. findGameExecutableResilient below already
+    // walks a candidate folder recursively looking for a filename match
+    // from the catalogue's known executables, same as it does for
+    // ProgramFiles below, so this doesn't need its own separate
+    // title-matching logic.
+    const userPreferences = await db
+      .get<string, UserPreferences | null>(levelKeys.userPreferences, {
+        valueEncoding: "json",
+      })
+      .catch(() => null);
+
+    if (userPreferences?.installPath) {
+      candidateFolders.push(userPreferences.installPath);
+    }
 
     if (process.platform === "linux" && winePrefixPath) {
       candidateFolders.push(path.join(winePrefixPath, "drive_c"));
@@ -331,21 +302,15 @@ const openGameInstaller = async (
     });
   }
 
-  const gamePathFileNames = fs.readdirSync(gamePath);
-  const gamePathExecutableFiles = gamePathFileNames.filter(
-    (fileName: string) => path.extname(fileName).toLowerCase() === ".exe"
-  );
+  const directRipExecutable = await detectDirectRipExecutable(gamePath);
 
-  if (gamePathExecutableFiles.length === 1) {
-    return await executeGameInstaller(
-      path.join(gamePath, gamePathExecutableFiles[0]),
-      {
-        gameId: objectId,
-        winePrefixPath: effectiveWinePrefixPath,
-        protonPath: game?.protonPath,
-        onExit: onInstallerExit,
-      }
-    );
+  if (directRipExecutable) {
+    return await executeGameInstaller(directRipExecutable, {
+      gameId: objectId,
+      winePrefixPath: effectiveWinePrefixPath,
+      protonPath: game?.protonPath,
+      onExit: onInstallerExit,
+    });
   }
 
   shell.openPath(gamePath);

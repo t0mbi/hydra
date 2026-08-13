@@ -137,6 +137,29 @@ export const resolveClassicsBadge = (
   return { label: null, icon: undefined };
 };
 
+export type CustomGameBadgeKind = "custom" | "xbox" | "steam" | "epic";
+
+interface CustomGameBadgeSource {
+  shop: GameShop;
+  launchesViaMicrosoftStore?: boolean;
+  launchesViaSteamProtocol?: boolean;
+  launchesViaEpicProtocol?: boolean;
+}
+
+// Games added via "browse installed X games" (see external-launch.ts on the
+// main side) are still shop === "custom" under the hood -- this picks the
+// more specific badge for them instead of the generic "Custom" one, null
+// for everything else (a real catalogue game).
+export const getCustomGameBadgeKind = (
+  game: CustomGameBadgeSource
+): CustomGameBadgeKind | null => {
+  if (game.shop !== "custom") return null;
+  if (game.launchesViaMicrosoftStore) return "xbox";
+  if (game.launchesViaSteamProtocol) return "steam";
+  if (game.launchesViaEpicProtocol) return "epic";
+  return "custom";
+};
+
 interface ClassicsLaunchErrorContext {
   t: (key: string) => string;
   showErrorToast: (message: string) => void;

@@ -13,7 +13,11 @@ import { INTERVALS } from "@main/constants";
 import { Wine } from "./wine";
 import { NativeAddon } from "./native-addon";
 import { emulatorSessions } from "./emulators/emulator-session-tracker";
-import { launchedGamePids } from "./launched-game-pids";
+import {
+  launchedGamePids,
+  pendingExternalLaunches,
+} from "./launched-game-pids";
+import { getExternalLaunchInfo } from "@main/helpers/external-launch";
 import { isValidProcessWatcherScan } from "./process-watcher-scan";
 import {
   hasLaunchedPidMatch,
@@ -239,6 +243,34 @@ const getSystemProcessMap = async () => {
   return { processMap, winePrefixMap, linuxProcesses };
 };
 
+// Some Microsoft Store/Xbox games activate through a short-lived launcher
+// stub (e.g. Microsoft's own gamelaunchhelper.exe) that hands off to the
+// real game process and exits -- the tracked PID from activation disappears
+// even though the game is still running. Steam/Epic protocol launches never
+// get a PID at all (see launch-game.ts). Both cases are solved the same
+// way: look for any currently-running process whose exe path is inside the
+// game's known install folder (same technique Playnite uses via
+// directory-watching) and adopt it as the tracked PID.
+const findProcessInInstallLocation = async (
+  installLocation: string
+): Promise<number | null> => {
+  const processes = await NativeAddon.listProcesses().catch(() => []);
+  const normalizedRoot = installLocation.toLowerCase();
+
+  const match = processes.find(
+    (process) =>
+      typeof process.exe === "string" &&
+      process.exe.toLowerCase().startsWith(normalizedRoot)
+  );
+
+  return match?.pid ?? null;
+};
+
+// How long to keep scanning the install folder for a Steam/Epic protocol
+// launch that hasn't produced a matching process yet, before giving up
+// (user cancelled the external launcher's own prompt, closed it, etc).
+const PENDING_EXTERNAL_LAUNCH_TIMEOUT_MS = 5 * 60 * 1000;
+
 const isPidAlive = (pid: number | undefined): boolean => {
   if (pid === undefined) return false;
 
@@ -321,12 +353,45 @@ export const watchProcesses = async () => {
     const gameKey = levelKeys.game(game.shop, game.objectId);
     const executablePath = game.executablePath;
 
-    // executablePath here is an AppUserModelID, not a real path -- nothing
-    // to match against processMap. Track liveness of the PID
-    // NativeAddon.activateUwpApp returned at launch instead (see
-    // launch-game.ts).
-    if (game.launchesViaMicrosoftStore) {
-      const hasProcess = isPidAlive(launchedGamePids.get(gameKey));
+    // executablePath (or the provider-specific target field) here is an
+    // AppUserModelID/Steam appid/Epic AppName, not a real path -- nothing to
+    // match against processMap. Track liveness of the tracked PID instead
+    // (see launch-game.ts / external-launch.ts).
+    const externalLaunchInfo = getExternalLaunchInfo(game);
+
+    if (externalLaunchInfo) {
+      let hasProcess = isPidAlive(launchedGamePids.get(gameKey));
+
+      const pendingSince = pendingExternalLaunches.get(gameKey);
+      const pendingExpired =
+        pendingSince !== undefined &&
+        Date.now() - pendingSince > PENDING_EXTERNAL_LAUNCH_TIMEOUT_MS;
+
+      if (pendingExpired) {
+        pendingExternalLaunches.delete(gameKey);
+      }
+
+      // Microsoft Store games already have a PID once launched, so the
+      // directory scan below only runs as a fallback once we know it was
+      // alive at some point (gamesPlaytime.has). Steam/Epic launches never
+      // get an initial PID at all -- pendingExternalLaunches (set when the
+      // protocol URI was triggered) lets the very first scan run too.
+      if (
+        !hasProcess &&
+        externalLaunchInfo.installLocation &&
+        (gamesPlaytime.has(gameKey) ||
+          (pendingSince !== undefined && !pendingExpired))
+      ) {
+        const fallbackPid = await findProcessInInstallLocation(
+          externalLaunchInfo.installLocation
+        );
+
+        if (fallbackPid !== null) {
+          launchedGamePids.set(gameKey, fallbackPid);
+          pendingExternalLaunches.delete(gameKey);
+          hasProcess = true;
+        }
+      }
 
       if (hasProcess) {
         if (gamesPlaytime.has(gameKey)) {
@@ -588,6 +653,7 @@ const onCloseGame = (game: Game) => {
   const gamePlaytime = gamesPlaytime.get(gameKey)!;
   deleteGamePlaytime(gameKey);
   launchedGamePids.delete(gameKey);
+  pendingExternalLaunches.delete(gameKey);
   PowerSaveBlockerManager.markGameClosed(gameKey);
 
   const delta = now - gamePlaytime.lastTick;

@@ -82,8 +82,7 @@ const prepareManualCustomAssetClear = async (
   };
 };
 
-const setGameArtworkSelection = async (
-  _event: Electron.IpcMainInvokeEvent,
+export const setGameArtworkSelectionCore = async (
   params: SetArtworkSelectionParams
 ): Promise<GameArtworkSelection | null> => {
   const { shop, objectId, type, url, artworkId, clear } = params;
@@ -144,5 +143,10 @@ const setGameArtworkSelection = async (
 
   return record;
 };
+
+const setGameArtworkSelection = async (
+  _event: Electron.IpcMainInvokeEvent,
+  params: SetArtworkSelectionParams
+) => setGameArtworkSelectionCore(params);
 
 registerEvent("setGameArtworkSelection", setGameArtworkSelection);

@@ -897,6 +897,77 @@ contextBridge.exposeInMainWorld("electron", {
       matchedSteamObjectId,
       customCoverImageUrl
     ),
+  addUwpAppToLibrary: (
+    title: string,
+    appId: string,
+    installLocation: string,
+    iconUrl?: string,
+    logoImageUrl?: string,
+    libraryHeroImageUrl?: string,
+    matchedSteamObjectId?: string | null,
+    customCoverImageUrl?: string | null
+  ) =>
+    ipcRenderer.invoke(
+      "addUwpAppToLibrary",
+      title,
+      appId,
+      installLocation,
+      iconUrl,
+      logoImageUrl,
+      libraryHeroImageUrl,
+      matchedSteamObjectId,
+      customCoverImageUrl
+    ),
+  listInstalledUwpApps: (forceRefresh?: boolean) =>
+    ipcRenderer.invoke("listInstalledUwpApps", forceRefresh),
+  resolveDroppedExecutable: (filePath: string) =>
+    ipcRenderer.invoke("resolveDroppedExecutable", filePath),
+  addSteamAppToLibrary: (
+    title: string,
+    appId: string,
+    installLocation: string,
+    iconUrl?: string,
+    logoImageUrl?: string,
+    libraryHeroImageUrl?: string,
+    matchedSteamObjectId?: string | null,
+    customCoverImageUrl?: string | null
+  ) =>
+    ipcRenderer.invoke(
+      "addSteamAppToLibrary",
+      title,
+      appId,
+      installLocation,
+      iconUrl,
+      logoImageUrl,
+      libraryHeroImageUrl,
+      matchedSteamObjectId,
+      customCoverImageUrl
+    ),
+  listInstalledSteamApps: (forceRefresh?: boolean) =>
+    ipcRenderer.invoke("listInstalledSteamApps", forceRefresh),
+  addEpicAppToLibrary: (
+    title: string,
+    appName: string,
+    installLocation: string,
+    iconUrl?: string,
+    logoImageUrl?: string,
+    libraryHeroImageUrl?: string,
+    matchedSteamObjectId?: string | null,
+    customCoverImageUrl?: string | null
+  ) =>
+    ipcRenderer.invoke(
+      "addEpicAppToLibrary",
+      title,
+      appName,
+      installLocation,
+      iconUrl,
+      logoImageUrl,
+      libraryHeroImageUrl,
+      matchedSteamObjectId,
+      customCoverImageUrl
+    ),
+  listInstalledEpicApps: (forceRefresh?: boolean) =>
+    ipcRenderer.invoke("listInstalledEpicApps", forceRefresh),
   copyCustomGameAsset: (
     sourcePath: string,
     assetType: "icon" | "logo" | "hero" | "grid"

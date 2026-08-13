@@ -28,6 +28,7 @@ import { useUserDetails, useLibrary, useAppSelector } from "@renderer/hooks";
 import {
   CLASSICS_PS_PLATFORM_LABELS,
   resolveClassicsBadge,
+  getCustomGameBadgeKind,
 } from "@renderer/helpers";
 import {
   EMULATOR_ICONS,
@@ -197,6 +198,7 @@ export function GameDetailsContent() {
   const classicsUseHeroLayout = userPreferences?.classicsUseHeroLayout ?? false;
 
   const isCustomGame = game?.shop === "custom";
+  const customGameBadgeKind = game ? getCustomGameBadgeKind(game) : null;
   const isLaunchboxGame = shop === "launchbox";
   const renderClassicsHero = isLaunchboxGame && !classicsUseHeroLayout;
 
@@ -378,10 +380,10 @@ export function GameDetailsContent() {
                 <div className="game-details__hero-standard-meta">
                   <GameLogo game={game} shopDetails={shopDetails} />
                   {classicsChips}
-                  {isCustomGame && (
+                  {isCustomGame && customGameBadgeKind && (
                     <div className="game-details__hero-classics-chips">
                       <span className="game-details__hero-classics-chip">
-                        {t("custom_game_badge")}
+                        {t(`${customGameBadgeKind}_game_badge`)}
                       </span>
                     </div>
                   )}

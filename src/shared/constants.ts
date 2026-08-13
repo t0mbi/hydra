@@ -102,7 +102,13 @@ export const MINIMUM_FREE_DISK_SPACE_BYTES = 512 * 1024 * 1024;
 
 export const FILE_EXTENSIONS_TO_EXTRACT = [".rar", ".zip", ".7z"];
 
-export const WINDOWS_GAME_EXECUTABLE_EXTENSIONS = ["exe", "lnk", "bat", "cmd"];
+export const WINDOWS_GAME_EXECUTABLE_EXTENSIONS = [
+  "exe",
+  "lnk",
+  "url",
+  "bat",
+  "cmd",
+];
 
 export const LINUX_GAME_EXECUTABLE_EXTENSIONS = [
   ...WINDOWS_GAME_EXECUTABLE_EXTENSIONS,
@@ -112,6 +118,9 @@ export const LINUX_GAME_EXECUTABLE_EXTENSIONS = [
   "x86",
   "run",
   "bin",
+  // Linux's equivalent of a Windows .lnk/.url Steam shortcut -- see
+  // parseSteamDesktopEntry in parse-executable-path.ts.
+  "desktop",
 ];
 
 export const DARWIN_GAME_EXECUTABLE_EXTENSIONS = ["app"];

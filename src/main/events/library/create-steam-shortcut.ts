@@ -24,6 +24,7 @@ import {
   buildRunDeepLink,
   getHydraShortcutTarget,
 } from "@main/helpers/shortcut-launch";
+import { getExternalLaunchInfo } from "@main/helpers/external-launch";
 
 const downloadAsset = async (
   downloadPath: string,
@@ -212,13 +213,18 @@ const createSteamShortcut = async (
   if (!game.executablePath && game.shop !== "launchbox") {
     throw new Error("No executable path found for game");
   }
-  if (game.launchesViaMicrosoftStore) {
-    // executablePath is an AppUserModelID, not a real path -- Steam has no
-    // way to launch that itself (Hydra launches it via a native COM call,
-    // see launch-game.ts), so a shortcut here would just be broken.
-    throw new Error(
-      "Adding Microsoft Store / Xbox apps to Steam isn't supported yet"
-    );
+  const externalLaunchInfo = getExternalLaunchInfo(game);
+  if (externalLaunchInfo) {
+    // executablePath (or the provider-specific target) isn't a real path
+    // for any of these -- see external-launch.ts. A Steam shortcut here
+    // would just be broken (or, for an already-Steam game, redundant).
+    const messages: Record<typeof externalLaunchInfo.provider, string> = {
+      "microsoft-store":
+        "Adding Microsoft Store / Xbox apps to Steam isn't supported yet",
+      steam: "This game is already a Steam game",
+      epic: "Adding Epic Games titles to Steam isn't supported yet",
+    };
+    throw new Error(messages[externalLaunchInfo.provider]);
   }
   const classicsDiscPath =
     game.selectedDiscPath ?? game.discs?.[0]?.path ?? null;

@@ -25,12 +25,17 @@ import {
   Wine,
   NativeAddon,
   launchedGamePids,
+  pendingExternalLaunches,
 } from "@main/services";
 import { CommonRedistManager } from "@main/services/common-redist-manager";
 import { parseExecutablePath } from "../events/helpers/parse-executable-path";
 import { isGamemodeAvailable } from "./is-gamemode-available";
 import { isMangohudAvailable } from "./is-mangohud-available";
 import { resolveLaunchCommand } from "./resolve-launch-command";
+import {
+  getExternalLaunchInfo,
+  type ExternalLaunchInfo,
+} from "./external-launch";
 import {
   buildWindowsBatchCommand,
   isWindowsBatchFile,
@@ -565,29 +570,53 @@ const launchResolvedGame = async (
  * Shows the launcher window and launches the game executable
  * Shared between deep link handler and openGame event
  */
+const steamProtocolUri = (appId: string) => `steam://rungameid/${appId}`;
+
+const epicProtocolUri = (appName: string) =>
+  `com.epicgames.launcher://apps/${appName}?action=launch&silent=true`;
+
 /**
- * Microsoft Store/Xbox apps have no conventional executable to spawn -- see
- * parse-executable-path.ts. Launching them means activating the app by its
- * AppUserModelID (executablePath, in this case) through the same COM API
- * Explorer itself uses, which hands back the real launched process ID.
- * None of the surrounding cloud-save/Wine-compat/preflight machinery below
- * applies to these (no real filesystem exe to inspect), so this short-
- * circuits straight past it. Achievements/cloud-save-on-open/hide-to-tray
- * still work normally once process-watcher.ts sees the tracked PID running
- * and calls onOpenGame -- nothing here needs to duplicate that.
+ * Games added via one of the "browse installed X games" pickers have no
+ * conventional executable to spawn -- see external-launch.ts. Microsoft
+ * Store apps activate through a native COM call that hands back a real PID
+ * immediately; Steam/Epic launch through their own URI protocol instead
+ * (steam://rungameid, com.epicgames.launcher://), the same as clicking Play
+ * in those clients, which keeps overlay/anti-cheat/achievements working but
+ * doesn't hand back a PID -- process-watcher.ts has to discover the real
+ * process afterwards by scanning the install folder (see
+ * pendingExternalLaunches). None of the surrounding cloud-save/Wine-compat/
+ * preflight machinery below applies to any of these (no real filesystem exe
+ * to inspect), so this short-circuits straight past it.
+ * Achievements/cloud-save-on-open/hide-to-tray still work normally once
+ * process-watcher.ts sees a tracked PID running and calls onOpenGame --
+ * nothing here needs to duplicate that.
  */
-const launchMicrosoftStoreApp = (
+const launchExternalApp = (
   gameKey: string,
-  appUserModelId: string
+  info: ExternalLaunchInfo
 ): number | null => {
-  try {
-    const pid = NativeAddon.activateUwpApp(appUserModelId);
-    launchedGamePids.set(gameKey, pid);
-    return pid;
-  } catch (error) {
-    logger.error("Failed to activate Microsoft Store app", error);
-    return null;
+  if (info.provider === "microsoft-store") {
+    try {
+      const pid = NativeAddon.activateUwpApp(info.target);
+      launchedGamePids.set(gameKey, pid);
+      return pid;
+    } catch (error) {
+      logger.error("Failed to activate Microsoft Store app", error);
+      return null;
+    }
   }
+
+  const uri =
+    info.provider === "steam"
+      ? steamProtocolUri(info.target)
+      : epicProtocolUri(info.target);
+
+  shell.openExternal(uri).catch((error) => {
+    logger.error(`Failed to launch ${info.provider} app`, error);
+  });
+
+  pendingExternalLaunches.set(gameKey, Date.now());
+  return null;
 };
 
 const launchGameWithCloudSaveChecks = async (
@@ -599,8 +628,10 @@ const launchGameWithCloudSaveChecks = async (
   const game = await gamesSublevel.get(gameKey);
   clearCloudSaveLaunchGuard(objectId, shop);
 
-  if (game?.launchesViaMicrosoftStore) {
-    return launchMicrosoftStoreApp(gameKey, executablePath);
+  const externalLaunchInfo = game ? getExternalLaunchInfo(game) : null;
+
+  if (externalLaunchInfo) {
+    return launchExternalApp(gameKey, externalLaunchInfo);
   }
 
   const parsedPath = parseExecutablePath(executablePath).executablePath;

@@ -13,6 +13,9 @@ import type {
   UserProfile,
   UpdateProfileRequest,
   GameStats,
+  InstalledUwpApp,
+  InstalledSteamApp,
+  InstalledEpicApp,
   UserDetails,
   FriendRequestSync,
   FriendPresenceSync,
@@ -311,6 +314,52 @@ declare global {
       matchedSteamObjectId?: string | null,
       customCoverImageUrl?: string | null
     ) => Promise<Game>;
+    addUwpAppToLibrary: (
+      title: string,
+      appId: string,
+      installLocation: string,
+      iconUrl?: string,
+      logoImageUrl?: string,
+      libraryHeroImageUrl?: string,
+      matchedSteamObjectId?: string | null,
+      customCoverImageUrl?: string | null
+    ) => Promise<Game>;
+    listInstalledUwpApps: (
+      forceRefresh?: boolean
+    ) => Promise<InstalledUwpApp[]>;
+    resolveDroppedExecutable: (
+      filePath: string
+    ) => Promise<
+      | { kind: "microsoft-store"; resolvedApp: InstalledUwpApp | null }
+      | { kind: "steam"; resolvedApp: InstalledSteamApp | null }
+      | { kind: "plain" }
+    >;
+    addSteamAppToLibrary: (
+      title: string,
+      appId: string,
+      installLocation: string,
+      iconUrl?: string,
+      logoImageUrl?: string,
+      libraryHeroImageUrl?: string,
+      matchedSteamObjectId?: string | null,
+      customCoverImageUrl?: string | null
+    ) => Promise<Game>;
+    listInstalledSteamApps: (
+      forceRefresh?: boolean
+    ) => Promise<InstalledSteamApp[]>;
+    addEpicAppToLibrary: (
+      title: string,
+      appName: string,
+      installLocation: string,
+      iconUrl?: string,
+      logoImageUrl?: string,
+      libraryHeroImageUrl?: string,
+      matchedSteamObjectId?: string | null,
+      customCoverImageUrl?: string | null
+    ) => Promise<Game>;
+    listInstalledEpicApps: (
+      forceRefresh?: boolean
+    ) => Promise<InstalledEpicApp[]>;
     updateCustomGame: (params: {
       shop: GameShop;
       objectId: string;

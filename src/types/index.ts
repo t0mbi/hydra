@@ -298,6 +298,25 @@ export interface GameStats {
   reviewCount: number;
 }
 
+export interface InstalledUwpApp {
+  name: string;
+  appId: string;
+  packageFamilyName: string;
+  installLocation: string;
+}
+
+export interface InstalledSteamApp {
+  name: string;
+  appId: string;
+  installLocation: string;
+}
+
+export interface InstalledEpicApp {
+  name: string;
+  appName: string;
+  installLocation: string;
+}
+
 export interface GameReviewAnswer {
   id: string;
   answerHtml: string;

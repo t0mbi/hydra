@@ -8,6 +8,7 @@ import path from "node:path";
 import { NativeAddon } from "@main/services/native-addon";
 import { processReferencesExecutable } from "@main/services/linux-process-match";
 import { isWindowsBatchFile } from "@main/helpers/windows-batch-command";
+import { getExternalLaunchInfo } from "@main/helpers/external-launch";
 
 const getKillCommand = (pid: number) => {
   if (process.platform == "win32") {
@@ -32,10 +33,11 @@ const closeGame = async (
 
   const launchedPid = launchedGamePids.get(levelKeys.game(shop, objectId));
 
-  // executablePath is an AppUserModelID here, not a real path -- it'll
-  // never match a running process's exe path below, so close the tracked
-  // launch PID directly instead (see launch-game.ts/process-watcher.ts).
-  if (game.launchesViaMicrosoftStore) {
+  // executablePath (or the provider-specific target) is not a real path
+  // here -- it'll never match a running process's exe path below, so close
+  // the tracked launch PID directly instead (see
+  // launch-game.ts/process-watcher.ts).
+  if (getExternalLaunchInfo(game)) {
     if (launchedPid === undefined) return;
 
     try {

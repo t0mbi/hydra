@@ -7,9 +7,9 @@ import {
   updateGameExecutablePath,
   updateGameTrackingExecutablePaths,
 } from "@main/helpers/update-executable-path";
-import { logger } from "@main/services";
+import { logger, WindowManager } from "@main/services";
 import { runAutomaticCloudSaveSync } from "@main/services/cloud-save";
-import { resolveInstalledUwpAppId } from "@main/helpers/resolve-uwp-app-id";
+import { resolveInstalledUwpApp } from "@main/helpers/list-installed-uwp-apps";
 import type { GameShop } from "@types";
 
 const updateExecutablePath = async (
@@ -21,6 +21,7 @@ const updateExecutablePath = async (
   const parsed = executablePath ? parseExecutablePath(executablePath) : null;
   let parsedPath = parsed?.executablePath ?? null;
   const launchesViaMicrosoftStore = parsed?.launchesViaMicrosoftStore ?? false;
+  let uwpInstallLocation: string | null = null;
 
   const gameKey = levelKeys.game(shop, objectId);
 
@@ -30,9 +31,10 @@ const updateExecutablePath = async (
   // See add-custom-game-to-library.ts -- the shortcut's own AppUserModelID
   // isn't always the real, activatable one.
   if (launchesViaMicrosoftStore) {
-    const resolvedAppId = await resolveInstalledUwpAppId(game.title);
-    if (resolvedAppId) {
-      parsedPath = resolvedAppId;
+    const resolvedApp = await resolveInstalledUwpApp(game.title);
+    if (resolvedApp) {
+      parsedPath = resolvedApp.appId;
+      uwpInstallLocation = resolvedApp.installLocation;
     }
   }
 
@@ -46,16 +48,43 @@ const updateExecutablePath = async (
     automaticCloudSync:
       executablePath === null ? false : game.automaticCloudSync,
     launchesViaMicrosoftStore,
+    uwpInstallLocation,
   });
 
   if (environmentChanged) {
     void runAutomaticCloudSaveSync(objectId, shop, "environment-changed");
   }
 
-  // Calculate size in background and update later. Skipped for Microsoft
-  // Store games -- parsedPath is an AppUserModelID there, not a real path,
-  // so there's no folder to measure.
-  if (parsedPath && !launchesViaMicrosoftStore) {
+  // Unlike most other library-mutating handlers (update-game-custom-assets.ts,
+  // scan-installed-games.ts, etc.), this one never told other open windows
+  // the game record changed -- a renderer that wasn't the one making this
+  // call (or wasn't separately doing its own local refresh afterwards, the
+  // way game-options-modal.tsx's change-executable-path flow does) kept
+  // showing the stale pre-link game state (e.g. the game page still showing
+  // "Download" after successfully linking an executable from the downloads
+  // page's "Already installed?" button, which doesn't do that local
+  // refresh) until something else happened to trigger a refetch.
+  WindowManager.sendToAppWindows("on-library-batch-complete");
+
+  // Calculate size in background and update later. For Microsoft Store
+  // games, parsedPath is an AppUserModelID, not a real path, so measure
+  // uwpInstallLocation (the real folder) directly instead of trying to
+  // derive a game root from the (non-existent) executable path.
+  if (launchesViaMicrosoftStore && uwpInstallLocation) {
+    getDirectorySize(uwpInstallLocation)
+      .then(async (installedSizeInBytes) => {
+        const currentGame = await gamesSublevel.get(gameKey);
+        if (!currentGame) return;
+
+        await gamesSublevel.put(gameKey, {
+          ...currentGame,
+          installedSizeInBytes,
+        });
+      })
+      .catch((err) => {
+        logger.error(`Failed to calculate UWP app size: ${err}`);
+      });
+  } else if (parsedPath && !launchesViaMicrosoftStore) {
     findGameRootFromExe(parsedPath)
       .then(async (gameRoot) => {
         if (!gameRoot) {
@@ -103,6 +132,8 @@ const updateTrackingExecutablePaths = async (
     gameKey,
     updateGameTrackingExecutablePaths(game, parsedPaths)
   );
+
+  WindowManager.sendToAppWindows("on-library-batch-complete");
 };
 
 registerEvent("updateTrackingExecutablePaths", updateTrackingExecutablePaths);

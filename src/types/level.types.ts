@@ -64,6 +64,32 @@ export interface Game {
   // tracked in process-watcher.ts by the PID that call returns rather than
   // the usual executable-name matching.
   launchesViaMicrosoftStore?: boolean;
+  // The real install folder for a Microsoft Store/Xbox app (from
+  // Get-AppxPackage, see list-installed-uwp-apps.ts) -- executablePath
+  // itself is an AppUserModelID for these, not a path, so this is the only
+  // place a real filesystem location for the game lives. Powers "Open
+  // folder", installed-size calculation, and process-watcher.ts's
+  // directory-based tracking fallback.
+  uwpInstallLocation?: string | null;
+  // Same idea as launchesViaMicrosoftStore, for a game added via "browse
+  // installed Steam games" -- executablePath has no real target either;
+  // launching goes through steam://rungameid/<steamProtocolAppId> (see
+  // launch-game.ts's getExternalLaunchInfo), the same way clicking Play in
+  // Steam itself does, so overlay/anti-cheat/achievements keep working.
+  launchesViaSteamProtocol?: boolean;
+  steamProtocolAppId?: string | null;
+  // The install folder from Steam's own appmanifest_*.acf (see
+  // list-installed-steam-apps.ts) -- powers "Open folder", installed-size,
+  // and process-watcher.ts's directory-based tracking (steam:// launches
+  // don't hand back a PID directly, unlike the UWP COM activation call).
+  steamInstallLocation?: string | null;
+  // Same pattern for a game added via "browse installed Epic Games" --
+  // launched through com.epicgames.launcher://apps/<epicProtocolAppName>
+  // instead of running the exe directly, so EOS/anti-cheat initialize the
+  // same way they would from the real launcher.
+  launchesViaEpicProtocol?: boolean;
+  epicProtocolAppName?: string | null;
+  epicInstallLocation?: string | null;
   trackingExecutablePaths?: string[] | null;
   trackingExecutablePathsUpdatedAt?: Date | null;
   launchOptions?: string | null;
@@ -142,6 +168,12 @@ export interface DownloadDirectoryPreference {
 
 export interface UserPreferences {
   downloadsPath?: string | null;
+  // Where the user keeps their actual game library (distinct from
+  // downloadsPath, which is just where downloads land before/during
+  // install). Used by "Already installed?" to also check here, and by
+  // direct-rip downloads (a ready-to-play folder, no installer) to move
+  // themselves here once done -- see open-game-installer.ts.
+  installPath?: string | null;
   defaultWinePrefixPath?: string | null;
   downloadDirectories?: DownloadDirectoryPreference[];
   optionalDownloadsPaths?: string[];

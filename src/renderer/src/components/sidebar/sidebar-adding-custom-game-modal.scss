@@ -84,6 +84,25 @@
     }
   }
 
+  &__uwp-toggle {
+    display: flex;
+    align-items: center;
+    gap: globals.$spacing-unit;
+    align-self: flex-start;
+    padding: 0;
+    border: none;
+    background: none;
+    color: inherit;
+    opacity: 0.7;
+    font-size: 13px;
+    cursor: pointer;
+
+    &:hover {
+      opacity: 1;
+      text-decoration: underline;
+    }
+  }
+
   &__suggestions {
     display: flex;
     flex-direction: column;

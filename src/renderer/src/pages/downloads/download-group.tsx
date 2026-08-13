@@ -1242,7 +1242,12 @@ export function DownloadGroup({
                           <Button
                             theme="primary"
                             onClick={() =>
-                              openGameInstaller(game.shop, game.objectId)
+                              isInstall
+                                ? openGameInstaller(game.shop, game.objectId)
+                                : window.electron.openGameExecutablePath(
+                                    game.shop,
+                                    game.objectId
+                                  )
                             }
                             disabled={isGameDeleting(game.id)}
                             className="download-group__simple-action-btn"
