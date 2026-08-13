@@ -21,17 +21,18 @@ $hero-height: 350px;
 
   &__hero {
     width: 100%;
-    height: $hero-height;
+    // Matches the hero image output ratio (1920x620, see
+    // game-assets-settings.tsx's ASSET_OUTPUT_SIZE.hero) so the full hero
+    // stays visible as the window resizes, instead of being cropped to a
+    // fixed pixel height. Written as a literal CSS ratio (not a Sass
+    // variable) since Sass treats bare `/` as division outside of that --
+    // deprecated in Dart Sass, and unnecessary here anyway.
+    aspect-ratio: 1920 / 620;
     min-height: $hero-height;
     display: flex;
     flex-direction: column;
     position: relative;
     transition: all ease 0.2s;
-
-    @media (min-width: 1250px) {
-      height: 350px;
-      min-height: 350px;
-    }
 
     &--classics-wrapper {
       height: 400px;
@@ -385,8 +386,7 @@ $hero-height: 350px;
 
   &__hero-image {
     width: 100%;
-    height: $hero-height;
-    min-height: $hero-height;
+    height: 100%;
     object-fit: cover;
     object-position: top;
     transition: all ease 0.2s;
@@ -396,8 +396,6 @@ $hero-height: 350px;
 
     @media (min-width: 1250px) {
       object-position: center;
-      height: $hero-height;
-      min-height: $hero-height;
     }
 
     &--blurred {

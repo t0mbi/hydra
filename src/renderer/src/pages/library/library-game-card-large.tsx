@@ -1,8 +1,9 @@
 import { LibraryGame } from "@types";
-import { useGameCard } from "@renderer/hooks";
+import { useGameCard, isAnimatedCoverCandidate } from "@renderer/hooks";
 import {
   CLASSICS_PS_PLATFORM_LABELS,
   resolveClassicsBadge,
+  getCustomGameBadgeKind,
 } from "@renderer/helpers";
 import { AchievementProgress } from "@renderer/components";
 import { formatBytes } from "@shared";
@@ -11,7 +12,6 @@ import {
   AlertFillIcon,
   DatabaseIcon,
   FileZipIcon,
-  CheckCircleFillIcon,
 } from "@primer/octicons-react";
 import { memo, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -42,7 +42,7 @@ export const LibraryGameCardLarge = memo(function LibraryGameCardLarge({
   const { formatPlayTime, handleCardClick, handleContextMenuClick } =
     useGameCard(game, onContextMenu);
 
-  const isInstalled = Boolean(game.executablePath);
+  const customGameBadgeKind = getCustomGameBadgeKind(game);
 
   const sizeBars = useMemo(() => {
     const items: {
@@ -93,28 +93,51 @@ export const LibraryGameCardLarge = memo(function LibraryGameCardLarge({
     const isSelectedHero = Boolean(game.selectedArtworkTypes?.includes("hero"));
     const isSelectedGrid = Boolean(game.selectedArtworkTypes?.includes("grid"));
 
-    const candidates: { url: string | null | undefined; isChosen: boolean }[] =
-      [
-        { url: game.customHeroImageUrl, isChosen: true },
-        { url: game.libraryHeroImageUrl, isChosen: isSelectedHero },
-      ];
+    type Candidate = { url: string | null | undefined; isChosen: boolean };
 
-    if (!isClassics) {
-      candidates.push(
-        { url: game.customCoverImageUrl, isChosen: true },
-        { url: game.coverImageUrl, isChosen: isSelectedGrid }
+    const nonEmpty = (group: Candidate[]) =>
+      group.filter(
+        (candidate): candidate is { url: string; isChosen: boolean } =>
+          Boolean(candidate.url && candidate.url.trim() !== "")
       );
-    }
 
-    candidates.push(
+    // Animated heroes should autoplay by default -- try any animated-format
+    // candidate before its static sibling. Scoped to *within* each tier
+    // (not across all of them) so a portrait cover image never outranks a
+    // proper widescreen hero just because it happens to be animated --
+    // this background is stretched full-bleed via background-size: cover,
+    // so a portrait source there gets cropped down to an unrecognizable
+    // sliver.
+    const preferAnimated = (group: Candidate[]) => {
+      const filled = nonEmpty(group);
+      return [
+        ...filled.filter((candidate) =>
+          isAnimatedCoverCandidate(candidate.url)
+        ),
+        ...filled.filter(
+          (candidate) => !isAnimatedCoverCandidate(candidate.url)
+        ),
+      ];
+    };
+
+    const heroTier = preferAnimated([
+      { url: game.customHeroImageUrl, isChosen: true },
+      { url: game.libraryHeroImageUrl, isChosen: isSelectedHero },
+    ]);
+
+    const coverTier = isClassics
+      ? []
+      : preferAnimated([
+          { url: game.customCoverImageUrl, isChosen: true },
+          { url: game.coverImageUrl, isChosen: isSelectedGrid },
+        ]);
+
+    const fallbackTier = nonEmpty([
       { url: game.libraryImageUrl, isChosen: false },
-      { url: game.iconUrl, isChosen: false }
-    );
+      { url: game.iconUrl, isChosen: false },
+    ]);
 
-    return candidates.filter(
-      (candidate): candidate is { url: string; isChosen: boolean } =>
-        Boolean(candidate.url && candidate.url.trim() !== "")
-    );
+    return [...heroTier, ...coverTier, ...fallbackTier];
   }, [game, isClassics]);
 
   const heroSources = useMemo(
@@ -265,28 +288,13 @@ export const LibraryGameCardLarge = memo(function LibraryGameCardLarge({
           )}
 
           <div className="library-game-card-large__top-right">
-            {game.shop === "custom" && (
+            {customGameBadgeKind && (
               <div
                 className="library-game-card-large__custom-badge"
-                title={t("custom_game_badge_tooltip")}
+                title={t(`${customGameBadgeKind}_game_badge_tooltip`)}
               >
                 <span className="library-game-card-large__custom-text">
-                  {t("custom_game_badge")}
-                </span>
-              </div>
-            )}
-
-            {isInstalled && (
-              <div
-                className="library-game-card-large__installed-badge"
-                title={t("installed_tooltip")}
-              >
-                <CheckCircleFillIcon
-                  size={12}
-                  className="library-game-card-large__installed-icon"
-                />
-                <span className="library-game-card-large__installed-text">
-                  {t("installed")}
+                  {t(`${customGameBadgeKind}_game_badge`)}
                 </span>
               </div>
             )}
@@ -340,6 +348,7 @@ export const LibraryGameCardLarge = memo(function LibraryGameCardLarge({
               classNamePrefix="library-game-card-large"
               label={`${game.title} achievements`}
               trophyIconSize={14}
+              hidePercentage
             />
           )}
         </div>

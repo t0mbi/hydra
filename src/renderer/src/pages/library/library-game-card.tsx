@@ -1,12 +1,9 @@
 import { LibraryGame } from "@types";
-import {
-  useGameCard,
-  useCoverPoster,
-  isAnimatedCoverCandidate,
-} from "@renderer/hooks";
+import { useGameCard, isAnimatedCoverCandidate } from "@renderer/hooks";
 import {
   CLASSICS_PS_PLATFORM_LABELS,
   resolveClassicsBadge,
+  getCustomGameBadgeKind,
 } from "@renderer/helpers";
 import { AchievementProgress } from "@renderer/components";
 import { memo, useEffect, useState } from "react";
@@ -32,26 +29,45 @@ interface LibraryGameCardProps {
   ) => void;
   onShowTooltip?: (gameId: string) => void;
   onHideTooltip?: () => void;
+  // Grid view's cells are large enough that the small iconUrl fallback (the
+  // only image many custom/picker-added games have) gets stretched into a
+  // blurry mess -- skip it there and fall back to the placeholder instead.
+  // Compact view's cells are small enough that the same icon looks fine.
+  preferCoverOnly?: boolean;
 }
 
 export const LibraryGameCard = memo(function LibraryGameCard({
   game,
   onContextMenu,
+  preferCoverOnly = false,
 }: Readonly<LibraryGameCardProps>) {
   const { t } = useTranslation("library");
   const { formatPlayTime, handleCardClick, handleContextMenuClick } =
     useGameCard(game, onContextMenu);
 
   const isInstalled = Boolean(game.executablePath);
+  const customGameBadgeKind = getCustomGameBadgeKind(game);
 
   const hasPickedCover = Boolean(game.selectedArtworkTypes?.includes("grid"));
 
-  const candidates = [
+  const orderedCandidates = [
     { url: game.customCoverImageUrl, isChosenCover: true }, // Level 0
     { url: game.coverImageUrl, isChosenCover: hasPickedCover }, // Level 1
     { url: game.libraryImageUrl, isChosenCover: false }, // Level 2
-    { url: game.iconUrl, isChosenCover: false }, // Level 3
+    ...(preferCoverOnly ? [] : [{ url: game.iconUrl, isChosenCover: false }]), // Level 3
   ].filter(({ url }) => url && url.trim() !== "");
+
+  // Animated covers should autoplay by default -- try any animated-format
+  // candidate before falling back through the normal static priority order,
+  // instead of only ever using whichever tier happens to come first.
+  const candidates = [
+    ...orderedCandidates.filter((candidate) =>
+      isAnimatedCoverCandidate(candidate.url)
+    ),
+    ...orderedCandidates.filter(
+      (candidate) => !isAnimatedCoverCandidate(candidate.url)
+    ),
+  ];
 
   const sources = candidates.map(({ url }) => url);
 
@@ -91,15 +107,6 @@ export const LibraryGameCard = memo(function LibraryGameCard({
   const activeImageSource = resolveImageSource(sources[fallbackIndex]);
   const isChosenCoverActive = Boolean(candidates[fallbackIndex]?.isChosenCover);
 
-  const rawActiveSource = sources[fallbackIndex];
-  const isAnimatedCover = isAnimatedCoverCandidate(rawActiveSource);
-  const coverPoster = useCoverPoster(rawActiveSource, isAnimatedCover);
-  const [isCoverHovered, setIsCoverHovered] = useState(false);
-  const displayImageSource =
-    isAnimatedCover && coverPoster && !isCoverHovered
-      ? resolveImageSource(coverPoster)
-      : activeImageSource;
-
   const { label: classicsPlatformLabel, icon: classicsEmulatorIcon } =
     resolveClassicsBadge(
       game.shop,
@@ -133,6 +140,7 @@ export const LibraryGameCard = memo(function LibraryGameCard({
     game.coverImageUrl,
     game.libraryImageUrl,
     game.iconUrl,
+    preferCoverOnly,
   ]);
 
   const renderCoverMedia = () => {
@@ -148,7 +156,7 @@ export const LibraryGameCard = memo(function LibraryGameCard({
       return (
         <div className="library-game-card__classics-cover">
           <img
-            src={displayImageSource}
+            src={activeImageSource}
             alt=""
             aria-hidden="true"
             className="library-game-card__classics-backdrop"
@@ -156,7 +164,7 @@ export const LibraryGameCard = memo(function LibraryGameCard({
             onError={handleImageError}
           />
           <img
-            src={displayImageSource}
+            src={activeImageSource}
             alt={game.title}
             className="library-game-card__classics-image"
             loading="lazy"
@@ -168,7 +176,7 @@ export const LibraryGameCard = memo(function LibraryGameCard({
 
     return (
       <img
-        src={displayImageSource}
+        src={activeImageSource}
         alt={game.title}
         className={`library-game-card__game-image ${
           isChosenCoverActive ? "library-game-card__game-image--contain" : ""
@@ -182,8 +190,6 @@ export const LibraryGameCard = memo(function LibraryGameCard({
   return (
     <button
       type="button"
-      onMouseEnter={() => setIsCoverHovered(true)}
-      onMouseLeave={() => setIsCoverHovered(false)}
       className="library-game-card__wrapper"
       title={game.title}
       onClick={handleCardClick}
@@ -223,13 +229,13 @@ export const LibraryGameCard = memo(function LibraryGameCard({
             </div>
           )}
 
-          {game.shop === "custom" && (
+          {customGameBadgeKind && (
             <div
               className="library-game-card__custom-badge"
-              title={t("custom_game_badge_tooltip")}
+              title={t(`${customGameBadgeKind}_game_badge_tooltip`)}
             >
               <span className="library-game-card__custom-text">
-                {t("custom_game_badge")}
+                {t(`${customGameBadgeKind}_game_badge`)}
               </span>
             </div>
           )}
@@ -256,6 +262,7 @@ export const LibraryGameCard = memo(function LibraryGameCard({
             unlockedAchievementCount={game.unlockedAchievementCount ?? 0}
             classNamePrefix="library-game-card"
             label={`${game.title} achievements`}
+            hidePercentage
           />
         )}
       </div>

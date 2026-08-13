@@ -8,6 +8,7 @@ interface AchievementProgressProps {
   classNamePrefix: string;
   label: string;
   trophyIconSize?: number;
+  hidePercentage?: boolean;
 }
 
 export function AchievementProgress({
@@ -16,6 +17,7 @@ export function AchievementProgress({
   classNamePrefix,
   label,
   trophyIconSize = 13,
+  hidePercentage = false,
 }: Readonly<AchievementProgressProps>) {
   const isCompleted = isGameCompleted(
     achievementCount,
@@ -44,13 +46,15 @@ export function AchievementProgress({
             {unlockedAchievementCount} / {achievementCount}
           </span>
         </div>
-        <span className={className}>
-          {isCompleted ? (
-            <TrophyIcon size={trophyIconSize} />
-          ) : (
-            <>{percentage}%</>
-          )}
-        </span>
+        {(!hidePercentage || isCompleted) && (
+          <span className={className}>
+            {isCompleted ? (
+              <TrophyIcon size={trophyIconSize} />
+            ) : (
+              <>{percentage}%</>
+            )}
+          </span>
+        )}
       </div>
       <ProgressBar
         now={unlockedAchievementCount}

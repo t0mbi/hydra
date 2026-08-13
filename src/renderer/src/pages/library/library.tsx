@@ -44,7 +44,12 @@ import "./library.scss";
 
 const FAVORITES_COLLECTION_ID = "__favorites__";
 const GAP = 16;
-const LARGE_CARD_ESTIMATED_HEIGHT = 300;
+const LARGE_CARD_MIN_HEIGHT = 300;
+// Matches the hero image output size (game-assets-settings.tsx's
+// ASSET_OUTPUT_SIZE.hero) -- large view's card scales its height to this
+// same ratio (library-game-card-large.scss) so the full hero stays visible
+// as the window resizes instead of being cropped to a fixed pixel height.
+const HERO_ASPECT_RATIO = 1920 / 620;
 const FALLBACK_ITEM_WIDTH = 150;
 
 const COLUMN_BREAKPOINTS = [3000, 2600, 2000, 1300, 900] as const;
@@ -400,11 +405,16 @@ export default function Library() {
   }, [filteredLibrary, columnsCount]);
 
   const estimatedRowHeight = useMemo(() => {
-    if (viewMode === "large") return LARGE_CARD_ESTIMATED_HEIGHT + GAP;
     const itemWidth =
       containerWidth > 0
         ? (containerWidth - GAP * (columnsCount - 1)) / columnsCount
         : FALLBACK_ITEM_WIDTH;
+
+    if (viewMode === "large") {
+      const heroHeight = itemWidth / HERO_ASPECT_RATIO;
+      return Math.max(LARGE_CARD_MIN_HEIGHT, Math.round(heroHeight)) + GAP;
+    }
+
     return Math.round((itemWidth * 3) / 2) + GAP;
   }, [viewMode, containerWidth, columnsCount]);
 
@@ -567,6 +577,8 @@ export default function Library() {
               {rowVirtualizer.getVirtualItems().map((virtualRow) => (
                 <div
                   key={virtualRow.key}
+                  ref={rowVirtualizer.measureElement}
+                  data-index={virtualRow.index}
                   style={{
                     position: "absolute",
                     top: 0,
@@ -590,6 +602,7 @@ export default function Library() {
                         key={`${game.shop}-${game.objectId}`}
                         game={game}
                         onContextMenu={handleOpenContextMenu}
+                        preferCoverOnly={viewMode === "grid"}
                       />
                     )
                   )}
