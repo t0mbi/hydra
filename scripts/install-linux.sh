@@ -36,6 +36,11 @@ command -v python3 >/dev/null 2>&1 || missing_pkgs+=(python)
 command -v cargo >/dev/null 2>&1 || missing_pkgs+=(rust)
 command -v gcc >/dev/null 2>&1 || missing_pkgs+=(base-devel)
 pacman -Qq fuse2 >/dev/null 2>&1 || missing_pkgs+=(fuse2)
+# The Arch package builds Python bindings against the system interpreter,
+# so it's used in place of PyPI's libtorrent -- that one has no prebuilt
+# wheel for every Python version and falls back to compiling from source
+# against boost/libtorrent-rasterbar, which this avoids entirely.
+pacman -Qq libtorrent-rasterbar >/dev/null 2>&1 || missing_pkgs+=(libtorrent-rasterbar)
 
 if [ "${#missing_pkgs[@]}" -gt 0 ]; then
   command -v pacman >/dev/null 2>&1 ||
@@ -63,7 +68,16 @@ cd "$INSTALL_DIR"
 PIP_CMD=$(command -v pip || command -v pip3) || die "pip not found even after installing python-pip."
 
 log "Installing Python build dependencies"
-"$PIP_CMD" install --user --break-system-packages -r requirements.txt
+if pacman -Qq libtorrent-rasterbar >/dev/null 2>&1; then
+  # libtorrent is already satisfied by the system package -- pip installing
+  # it too would ignore that and try to build PyPI's sdist from source.
+  pip_requirements=$(mktemp)
+  grep -v '^libtorrent$' requirements.txt > "$pip_requirements"
+  "$PIP_CMD" install --user --break-system-packages -r "$pip_requirements"
+  rm -f "$pip_requirements"
+else
+  "$PIP_CMD" install --user --break-system-packages -r requirements.txt
+fi
 
 log "Installing JS dependencies"
 yarn install --frozen-lockfile
