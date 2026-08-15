@@ -1,16 +1,22 @@
 #!/usr/bin/env bash
-# Clones/updates this fork, builds the Linux AppImage locally, and installs
-# a desktop entry so Hydra shows up in the system's application launcher.
+# Bootstraps build tooling on a fresh Arch/CachyOS machine, then clones/
+# updates this fork, builds the Linux AppImage locally, and installs a
+# desktop entry so Hydra shows up in the system's application launcher.
 #
-# Usage (from a CachyOS/Arch machine with node, yarn, rust/cargo and
-# python3 already installed):
+# Usage:
 #
 #   curl -fsSL https://raw.githubusercontent.com/t0mbi/hydra/main/scripts/install-linux.sh | bash
 #
 # Re-running this script later pulls the latest commits and rebuilds, so
-# it doubles as the update command.
+# it doubles as the update command. Prerequisite installs are skipped once
+# already present, so re-runs don't touch pacman at all.
 
 set -euo pipefail
+
+# Non-interactive: corepack (used to provision yarn) must not stop to ask
+# for confirmation when fetching the pinned yarn version, since stdin here
+# is the curl pipe, not a terminal.
+export COREPACK_ENABLE_DOWNLOAD_PROMPT=0
 
 REPO_URL="https://github.com/t0mbi/hydra.git"
 INSTALL_DIR="${HYDRA_SRC_DIR:-$HOME/.local/src/hydra}"
@@ -21,9 +27,27 @@ ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
 log() { printf '\n\033[1;36m==>\033[0m %s\n' "$1"; }
 die() { printf '\n\033[1;31merror:\033[0m %s\n' "$1" >&2; exit 1; }
 
-for cmd in git node yarn python3 cargo; do
-  command -v "$cmd" >/dev/null 2>&1 || die "'$cmd' not found on PATH -- install it first."
-done
+log "Checking build tooling"
+missing_pkgs=()
+command -v git >/dev/null 2>&1 || missing_pkgs+=(git)
+command -v node >/dev/null 2>&1 || missing_pkgs+=(nodejs)
+command -v python3 >/dev/null 2>&1 || missing_pkgs+=(python)
+{ command -v pip >/dev/null 2>&1 || command -v pip3 >/dev/null 2>&1; } || missing_pkgs+=(python-pip)
+command -v cargo >/dev/null 2>&1 || missing_pkgs+=(rust)
+command -v gcc >/dev/null 2>&1 || missing_pkgs+=(base-devel)
+pacman -Qq fuse2 >/dev/null 2>&1 || missing_pkgs+=(fuse2)
+
+if [ "${#missing_pkgs[@]}" -gt 0 ]; then
+  command -v pacman >/dev/null 2>&1 ||
+    die "Missing: ${missing_pkgs[*]} -- no pacman found to install them, install these manually first."
+  log "Installing missing packages via pacman: ${missing_pkgs[*]}"
+  sudo pacman -S --needed --noconfirm "${missing_pkgs[@]}"
+fi
+
+if ! command -v yarn >/dev/null 2>&1; then
+  log "Enabling corepack (yarn ships via this repo's pinned packageManager version)"
+  sudo corepack enable
+fi
 
 log "Fetching source"
 if [ -d "$INSTALL_DIR/.git" ]; then
@@ -36,8 +60,10 @@ fi
 
 cd "$INSTALL_DIR"
 
+PIP_CMD=$(command -v pip || command -v pip3) || die "pip not found even after installing python-pip."
+
 log "Installing Python build dependencies"
-pip install --user -r requirements.txt
+"$PIP_CMD" install --user --break-system-packages -r requirements.txt
 
 log "Installing JS dependencies"
 yarn install --frozen-lockfile
